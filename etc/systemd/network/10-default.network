@@ -1,0 +1,15 @@
+[Match]
+Name=e*
+
+[Link]
+MTUBytes=1500
+
+[Network]
+DHCP=ipv4
+LinkLocalAddressing=ipv6
+IPv6AcceptRA=false
+Bridge=br0
+
+[DHCP]
+RouteMetric=100
+UseMTU=true
