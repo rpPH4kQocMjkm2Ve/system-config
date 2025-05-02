@@ -1,0 +1,2 @@
+# $USER should be changed to real username
+/home/$USER/system-config/etc/systemd/network/ /etc/systemd/network/ none bind 0 0
