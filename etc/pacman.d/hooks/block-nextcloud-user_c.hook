@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = nextcloud-client
+
+[Action]
+Description = Re-blocking Nextcloud for user_c...
+When = PostTransaction
+Exec = /usr/bin/setfacl -m u:user_c:000 /usr/bin/nextcloud
