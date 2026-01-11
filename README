@@ -1,0 +1,7 @@
+Put ``destDir = "/"`` into ~/.config/chezmoi/chezmoi.toml
+
+You probably need to use:
+sudo systemctl start systemd-zram-setup@zram0.service
+
+sudo mkdir /snapshots/{root,home}
+sudo systemctl enable --now btrbk
