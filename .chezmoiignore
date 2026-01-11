@@ -4,5 +4,5 @@ etc/btrbk.conf.example
 etc/systemd/network/br0.netdev
 etc/systemd/network/br0.netowork
 etc/modprobe.d/10-nvidia.conf
-pacman.d/hooks/block-nextcloud-user_c.hook
+etc/pacman.d/hooks/block-nextcloud-user_c.hook
 {{- end }}
