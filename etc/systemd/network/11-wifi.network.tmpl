@@ -1,0 +1,13 @@
+[Match]
+Name=wl*
+
+[Network]
+DHCP=true
+LinkLocalAddressing=ipv6
+IPv6AcceptRA=true
+{{- if eq .chezmoi.hostname "desktop-1" }}
+Bridge=br0
+{{- end }}
+
+[DHCP]
+RouteMetric=200

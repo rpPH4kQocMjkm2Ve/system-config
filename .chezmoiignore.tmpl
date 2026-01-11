@@ -1,0 +1,8 @@
+etc/btrbk.conf.example
+
+{{- if eq .chezmoi.hostname "laptop-1" }}
+etc/systemd/network/br0.netdev
+etc/systemd/network/br0.netowork
+etc/modprobe.d/10-nvidia.conf
+pacman.d/hooks/block-nextcloud-user_c.hook
+{{- end }}
