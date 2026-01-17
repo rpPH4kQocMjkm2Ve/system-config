@@ -10,12 +10,12 @@ volume /
   snapshot_dir         /snapshots/root  
   {{- if eq .chezmoi.hostname "desktop-1" }}
   target               /mnt/ssd2/bkp/volumes/root  
-  {{- end }}
   incremental          yes
+  {{- end }}
 volume /
   subvolume home
   snapshot_dir         /snapshots/home 
   {{- if eq .chezmoi.hostname "desktop-1" }}
   target               /mnt/ssd2/bkp/volumes/home
-  {{- end }}
   incremental          yes
+  {{- end }}
