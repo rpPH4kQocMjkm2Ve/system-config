@@ -1,3 +1,4 @@
+README
 etc/btrbk.conf.example
 
 {{- if eq .chezmoi.hostname "laptop-1" }}
@@ -5,4 +6,7 @@ etc/systemd/network/br0.netdev
 etc/systemd/network/br0.network
 etc/modprobe.d/10-nvidia.conf
 etc/pacman.d/hooks/block-nextcloud-user_c.hook
+{{- else if eq .chezmoi.hostname "desktop-1" }}
+etc/tmpfiles.d/battery.conf
 {{- end }}
+
