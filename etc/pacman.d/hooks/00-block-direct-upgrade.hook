@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Verifying upgrade context...
+When = PreTransaction
+Exec = /usr/local/bin/atomic-guard
+AbortOnFail

@@ -1,0 +1,18 @@
+#!/bin/bash
+# /usr/local/bin/atomic-guard
+
+# allow when using atomic-upgrade
+[[ "${ATOMIC_UPGRADE:-}" == "1" ]] && exit 0
+
+# allow installing new pkgs (not upgrades) 
+pacman -Qu &>/dev/null || exit 0
+
+cat << 'EOF'
+
+════════════════════════════════════════════════════════════════
+  Direct upgrade blocked. Use: sudo atomic-upgrade
+════════════════════════════════════════════════════════════════
+
+EOF
+
+exit 1

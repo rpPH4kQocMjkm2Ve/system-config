@@ -1,0 +1,11 @@
+#!/bin/bash
+# /usr/local/bin/pacman-wrapper
+
+if [[ "$*" =~ -Syu|--upgrade ]]; then
+    echo "Hint: Use 'sudo atomic-upgrade' for atomic updates"
+    echo "Continue with regular pacman? [y/N]"
+    read -r answer
+    [[ "$answer" =~ ^[Yy]$ ]] || exit 1
+fi
+
+exec /usr/bin/pacman "$@"

@@ -1,0 +1,58 @@
+#!/bin/bash
+# /usr/local/bin/atomic-upgrade
+
+set -euo pipefail
+
+export ATOMIC_UPGRADE=1
+
+source /usr/local/lib/atomic/common.sh
+
+cleanup() {
+    echo ":: Cleaning up..."
+    mountpoint -q "${NEW_ROOT}/boot" 2>/dev/null && umount "${NEW_ROOT}/boot"
+    mountpoint -q "$NEW_ROOT" 2>/dev/null && umount -R "$NEW_ROOT"
+}
+trap cleanup EXIT
+
+CURRENT_SUBVOL_RAW=$(get_current_subvol_raw)
+CURRENT_SUBVOL="${CURRENT_SUBVOL_RAW#/}"
+
+GEN_ID=$(date +%Y%m%d-%H%M%S)
+NEW_SUBVOL="root-${GEN_ID}"
+
+UKI_PATH="${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
+
+echo ":: Current: ${CURRENT_SUBVOL_RAW} → New: /${NEW_SUBVOL}"
+
+mkdir -p "$NEW_ROOT"
+ensure_btrfs_mounted
+
+echo ":: Creating snapshot..."
+btrfs subvolume snapshot "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" \
+    "${BTRFS_MOUNT}/${NEW_SUBVOL}"
+
+echo ":: Mounting new root..."
+mount -o subvol="/${NEW_SUBVOL}" "/dev/mapper/${MAPPER_NAME}" "$NEW_ROOT"
+mount --bind "${ESP}" "${NEW_ROOT}/efi"
+mount --bind "/var/cache" "${NEW_ROOT}/var/cache"
+
+echo ":: Upgrading system..."
+arch-chroot "$NEW_ROOT" pacman -Syu 
+
+echo ":: Updating fstab..."
+sed -i "0,/subvol=\/${CURRENT_SUBVOL}/s//subvol=\/${NEW_SUBVOL}/" "${NEW_ROOT}/etc/fstab"
+
+echo ":: Building UKI..."
+UKI_PATH=$(build_uki "$GEN_ID" "$NEW_ROOT" "$NEW_SUBVOL")
+
+echo ":: Signing UKI for Secure Boot..."
+sbctl sign "$UKI_PATH"
+
+umount -R "$NEW_ROOT"
+
+echo ":: Running garbage collection..."
+garbage_collect "$KEEP_GENERATIONS"
+
+umount "$BTRFS_MOUNT" 2>/dev/null || true
+
+echo "Generation ${GEN_ID} ready. Reboot to activate."

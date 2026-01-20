@@ -1,0 +1,10 @@
+#!/bin/bash
+# /usr/local/bin/atomic-gc
+
+set -euo pipefail
+
+source /usr/local/lib/atomic/common.sh
+
+trap 'mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"' EXIT
+
+garbage_collect "${1:-$KEEP_GENERATIONS}"
