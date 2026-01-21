@@ -1,6 +1,15 @@
 #!/bin/bash
 # /usr/local/lib/atomic/common.sh
 
+BTRFS_MOUNT="/mnt/temp_root"
+NEW_ROOT="/mnt/newroot"
+ESP="/efi"
+KEEP_GENERATIONS=3
+MAPPER_NAME="root_crypt"
+LOCK_FILE="/var/lock/atomic-upgrade.lock"
+LOG_FILE="/var/log/atomic-upgrade.log"
+KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
+
 CONFIG_FILE="/etc/atomic.conf"
 [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
 
@@ -10,15 +19,6 @@ validate_config() {
     [[ "$KEEP_GENERATIONS" =~ ^[0-9]+$ ]] || { echo "ERROR: Invalid KEEP_GENERATIONS" >&2; return 1; }
     return 0
 }
-
-BTRFS_MOUNT="/mnt/temp_root"
-NEW_ROOT="/mnt/newroot"
-ESP="/efi"
-KEEP_GENERATIONS=3
-MAPPER_NAME="root_crypt"
-LOCK_FILE="/var/lock/atomic-upgrade.lock"
-LOG_FILE="/var/log/atomic-upgrade.log"
-KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
