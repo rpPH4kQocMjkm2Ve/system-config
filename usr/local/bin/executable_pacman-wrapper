@@ -1,10 +1,9 @@
 #!/bin/bash
 # /usr/local/bin/pacman-wrapper
 
-if [[ "$*" =~ -Syu|--upgrade ]]; then
+if [[ "$1" == "-S"* ]] && [[ "$*" =~ (^|[[:space:]])-[A-Za-z]*u|--(sysupgrade) ]]; then
     echo "Hint: Use 'sudo atomic-upgrade' for atomic updates"
-    echo "Continue with regular pacman? [y/N]"
-    read -r answer
+    read -t 30 -rp "Continue with regular pacman? [y/N] " answer || exit 1
     [[ "$answer" =~ ^[Yy]$ ]] || exit 1
 fi
 

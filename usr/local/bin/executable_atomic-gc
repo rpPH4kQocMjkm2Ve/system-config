@@ -1,10 +1,20 @@
 #!/bin/bash
 # /usr/local/bin/atomic-gc
 
+[[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
+
 set -euo pipefail
 
 source /usr/local/lib/atomic/common.sh
 
-trap 'mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"' EXIT
+acquire_lock
 
-garbage_collect "${1:-$KEEP_GENERATIONS}"
+trap 'mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"; [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&-' EXIT
+
+KEEP_COUNT="${1:-$KEEP_GENERATIONS}"
+if ! [[ "$KEEP_COUNT" =~ ^[0-9]+$ ]] || [[ "$KEEP_COUNT" -lt 1 ]]; then
+    echo "ERROR: Invalid generation count: $KEEP_COUNT" >&2
+    exit 1
+fi
+
+garbage_collect "$KEEP_COUNT"

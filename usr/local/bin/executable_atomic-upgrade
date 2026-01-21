@@ -1,35 +1,72 @@
 #!/bin/bash
 # /usr/local/bin/atomic-upgrade
 
+[[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
+
 set -euo pipefail
-
 export ATOMIC_UPGRADE=1
-
 source /usr/local/lib/atomic/common.sh
 
-cleanup() {
-    echo ":: Cleaning up..."
-    mountpoint -q "${NEW_ROOT}/boot" 2>/dev/null && umount "${NEW_ROOT}/boot"
-    mountpoint -q "$NEW_ROOT" 2>/dev/null && umount -R "$NEW_ROOT"
-}
-trap cleanup EXIT
+check_dependencies || exit 1
+
+acquire_lock
 
 CURRENT_SUBVOL_RAW=$(get_current_subvol_raw)
 CURRENT_SUBVOL="${CURRENT_SUBVOL_RAW#/}"
-
 GEN_ID=$(date +%Y%m%d-%H%M%S)
 NEW_SUBVOL="root-${GEN_ID}"
+SNAPSHOT_CREATED=0
 
-UKI_PATH="${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
+cleanup() {
+    local exit_code=$?
+    set +e 
+    
+    echo ":: Cleaning up..."
+    
+    for _ in {1..3}; do
+        local still_mounted=0
+        for mp in "${NEW_ROOT}/var/cache" "${NEW_ROOT}/efi" "$NEW_ROOT"; do
+            if mountpoint -q "$mp" 2>/dev/null; then
+                umount -l "$mp" 2>/dev/null || still_mounted=1
+            fi
+        done
+        [[ $still_mounted -eq 0 ]] && break
+        sleep 1
+    done
+    
+    if [[ $exit_code -ne 0 && ${SNAPSHOT_CREATED:-0} -eq 1 ]]; then
+        echo ":: Removing failed snapshot..."
+        if ensure_btrfs_mounted; then
+            btrfs subvolume delete "${BTRFS_MOUNT}/${NEW_SUBVOL}" 2>/dev/null || true
+        fi
+        rm -f "${ESP}/EFI/Linux/arch-${GEN_ID}.efi" 2>/dev/null || true
+    fi
+    
+    mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"
+    
+    [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&-
+}
+trap cleanup EXIT
+
 
 echo ":: Current: ${CURRENT_SUBVOL_RAW} → New: /${NEW_SUBVOL}"
 
 mkdir -p "$NEW_ROOT"
 ensure_btrfs_mounted
 
+echo ":: Checking disk space..."
+REQUIRED_SPACE=$(($(du -sb "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" 2>/dev/null | cut -f1) / 10))  # 10%
+AVAILABLE_SPACE=$(df -B1 "$BTRFS_MOUNT" | awk 'NR==2 {print $4}')
+
+if [[ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]]; then
+    echo "ERROR: Not enough space. Need ~$((REQUIRED_SPACE/1024/1024))MB, have $((AVAILABLE_SPACE/1024/1024))MB" >&2
+    exit 1
+fi
+
 echo ":: Creating snapshot..."
 btrfs subvolume snapshot "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" \
     "${BTRFS_MOUNT}/${NEW_SUBVOL}"
+SNAPSHOT_CREATED=1
 
 echo ":: Mounting new root..."
 mount -o subvol="/${NEW_SUBVOL}" "/dev/mapper/${MAPPER_NAME}" "$NEW_ROOT"
@@ -40,13 +77,13 @@ echo ":: Upgrading system..."
 arch-chroot "$NEW_ROOT" pacman -Syu 
 
 echo ":: Updating fstab..."
-sed -i "0,/subvol=\/${CURRENT_SUBVOL}/s//subvol=\/${NEW_SUBVOL}/" "${NEW_ROOT}/etc/fstab"
+update_fstab "${NEW_ROOT}/etc/fstab" "$CURRENT_SUBVOL" "$NEW_SUBVOL"
 
 echo ":: Building UKI..."
-UKI_PATH=$(build_uki "$GEN_ID" "$NEW_ROOT" "$NEW_SUBVOL")
+UKI_PATH=$(build_uki "$GEN_ID" "$NEW_ROOT" "$NEW_SUBVOL") || exit 1
 
 echo ":: Signing UKI for Secure Boot..."
-sbctl sign "$UKI_PATH"
+sbctl sign "$UKI_PATH" || { echo "ERROR: Signing failed" >&2; exit 1; }
 
 umount -R "$NEW_ROOT"
 
