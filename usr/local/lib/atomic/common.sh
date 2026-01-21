@@ -18,6 +18,7 @@ KEEP_GENERATIONS=3
 MAPPER_NAME="root_crypt"
 LOCK_FILE="/var/lock/atomic-upgrade.lock"
 LOG_FILE="/var/log/atomic-upgrade.log"
+KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -111,7 +112,7 @@ build_uki() {
     sed "s|^PRETTY_NAME=.*|PRETTY_NAME=\"Arch Linux (${gen_id})\"|" \
         "${new_root}/etc/os-release" > "$os_release_tmp"
     
-    local cmdline="rd.luks.name=${luks_uuid}=root_crypt root=/dev/mapper/${MAPPER_NAME} rootflags=subvol=${new_subvol} rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
+    local cmdline="rd.luks.name=${luks_uuid}=root_crypt root=/dev/mapper/${MAPPER_NAME} rootflags=subvol=${new_subvol} ${KERNEL_PARAMS}"
     
     ukify build \
         --linux="${new_root}/boot/vmlinuz-linux" \
