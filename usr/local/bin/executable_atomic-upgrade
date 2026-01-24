@@ -114,7 +114,7 @@ check_esp_space 250 || exit 1
 if [[ "$DRY_RUN" -eq 1 ]]; then
     echo ":: DRY RUN - would create: root-${GEN_ID}"
     echo ":: DRY RUN - packages to upgrade:"
-    pacman -Syu --print 2>&1 | head -50
+    /usr/bin/pacman -Syu --print 2>&1 | head -50
     echo ":: DRY RUN - would create: ${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
     echo ":: DRY RUN complete, no changes made"
     exit 0
@@ -142,7 +142,7 @@ mount --bind "/var/cache" "${NEW_ROOT}/var/cache" || {
 }
 
 echo ":: Upgrading system..."
-arch-chroot "$NEW_ROOT" pacman -Syu || {
+arch-chroot "$NEW_ROOT" /usr/bin/pacman -Syu || {
     echo "ERROR: Upgrade failed" >&2
     exit 1
 }
