@@ -12,6 +12,10 @@ if [[ "${ATOMIC_UPGRADE:-}" == "1" ]]; then
     exit 0
 fi
 
+if pstree -s $$ | grep -qE 'yay|paru'; then
+    exit 0
+fi
+
 cat << 'EOF'
 ════════════════════════════════════════════════════════════════
   Direct upgrade blocked. Use: sudo atomic-upgrade
