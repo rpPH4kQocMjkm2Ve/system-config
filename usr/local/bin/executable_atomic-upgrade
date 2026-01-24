@@ -4,14 +4,51 @@
 [[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
 
 set -euo pipefail
+
+VERSION="0.0.1"
+
+show_help() {
+    cat << EOF
+atomic-upgrade v${VERSION} - Atomic system upgrades for Arch Linux
+
+Usage: atomic-upgrade [OPTIONS]
+
+Options:
+    -n, --dry-run    Show what would be done
+    -h, --help       Show this help
+    -V, --version    Show version
+
+EOF
+    exit 0
+}
+
+case "${1:-}" in
+    -h|--help) show_help ;;
+    -V|--version) echo "atomic-upgrade v${VERSION}"; exit 0 ;;
+esac
+
 export ATOMIC_UPGRADE=1
 source /usr/local/lib/atomic/common.sh
 
+DRY_RUN=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run|-n) DRY_RUN=1; shift ;;
+        *) break ;;
+    esac
+done
+
+[[ -n "${NEW_ROOT:-}" ]] || { echo "ERROR: NEW_ROOT not defined" >&2; exit 1; }
+[[ -n "${BTRFS_MOUNT:-}" ]] || { echo "ERROR: BTRFS_MOUNT not defined" >&2; exit 1; }
+[[ -n "${ESP:-}" ]] || { echo "ERROR: ESP not defined" >&2; exit 1; }
+
+validate_config || exit 1 
 check_dependencies || exit 1
 
 acquire_lock
 
 CURRENT_SUBVOL_RAW=$(get_current_subvol_raw)
+[[ -n "$CURRENT_SUBVOL_RAW" ]] || { echo "ERROR: Cannot detect current subvolume" >&2; exit 1; }
 CURRENT_SUBVOL="${CURRENT_SUBVOL_RAW#/}"
 GEN_ID=$(date +%Y%m%d-%H%M%S)
 NEW_SUBVOL="root-${GEN_ID}"
@@ -23,28 +60,34 @@ cleanup() {
     
     echo ":: Cleaning up..."
     
-    for _ in {1..3}; do
-        local still_mounted=0
-        for mp in "${NEW_ROOT}/var/cache" "${NEW_ROOT}/efi" "$NEW_ROOT"; do
-            if mountpoint -q "$mp" 2>/dev/null; then
-                umount -l "$mp" 2>/dev/null || still_mounted=1
-            fi
+    if [[ -n "${NEW_ROOT:-}" ]]; then
+        local mounts=("${NEW_ROOT}/var/cache" "${NEW_ROOT}/efi" "$NEW_ROOT")
+        
+        for _ in {1..3}; do
+            local still_mounted=0
+            for mp in "${mounts[@]}"; do
+                if mountpoint -q "$mp" 2>/dev/null; then
+                    umount -l "$mp" 2>/dev/null || still_mounted=1
+                fi
+            done
+            [[ $still_mounted -eq 0 ]] && break
+            sleep 1
         done
-        [[ $still_mounted -eq 0 ]] && break
-        sleep 1
-    done
+    fi
     
-    if [[ $exit_code -ne 0 && ${SNAPSHOT_CREATED:-0} -eq 1 ]]; then
+    if [[ $exit_code -ne 0 && ${SNAPSHOT_CREATED:-0} -eq 1 && -n "${NEW_SUBVOL:-}" ]]; then
         echo ":: Removing failed snapshot..."
         if ensure_btrfs_mounted; then
             btrfs subvolume delete "${BTRFS_MOUNT}/${NEW_SUBVOL}" 2>/dev/null || true
         fi
-        rm -f "${ESP}/EFI/Linux/arch-${GEN_ID}.efi" 2>/dev/null || true
+        [[ -n "${GEN_ID:-}" ]] && rm -f "${ESP}/EFI/Linux/arch-${GEN_ID}.efi" 2>/dev/null
     fi
     
     mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"
     
-    [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&-
+    [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&- 2>/dev/null
+    
+    return $exit_code
 }
 trap cleanup EXIT
 
@@ -54,13 +97,27 @@ echo ":: Current: ${CURRENT_SUBVOL_RAW} → New: /${NEW_SUBVOL}"
 mkdir -p "$NEW_ROOT"
 ensure_btrfs_mounted
 
-echo ":: Checking disk space..."
-REQUIRED_SPACE=$(($(du -sb "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" 2>/dev/null | cut -f1) / 10))  # 10%
-AVAILABLE_SPACE=$(df -B1 "$BTRFS_MOUNT" | awk 'NR==2 {print $4}')
+echo ":: Verifying current system..."
+[[ -f "/boot/vmlinuz-linux" ]] || { echo "ERROR: No kernel in current system" >&2; exit 1; }
+[[ -f "/boot/initramfs-linux.img" ]] || { echo "ERROR: No initramfs in current system" >&2; exit 1; }
 
-if [[ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]]; then
-    echo "ERROR: Not enough space. Need ~$((REQUIRED_SPACE/1024/1024))MB, have $((AVAILABLE_SPACE/1024/1024))MB" >&2
+echo ":: Verifying current subvolume..."
+validate_subvolume "$CURRENT_SUBVOL" || {
+    echo "ERROR: Current subvolume invalid: $CURRENT_SUBVOL" >&2
     exit 1
+}
+
+echo ":: Checking disk space..."
+check_btrfs_space "$BTRFS_MOUNT" 10 || exit 1
+check_esp_space 250 || exit 1
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo ":: DRY RUN - would create: root-${GEN_ID}"
+    echo ":: DRY RUN - packages to upgrade:"
+    pacman -Syu --print 2>&1 | head -50
+    echo ":: DRY RUN - would create: ${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
+    echo ":: DRY RUN complete, no changes made"
+    exit 0
 fi
 
 echo ":: Creating snapshot..."
@@ -69,15 +126,36 @@ btrfs subvolume snapshot "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" \
 SNAPSHOT_CREATED=1
 
 echo ":: Mounting new root..."
-mount -o subvol="/${NEW_SUBVOL}" "/dev/mapper/${MAPPER_NAME}" "$NEW_ROOT"
-mount --bind "${ESP}" "${NEW_ROOT}/efi"
-mount --bind "/var/cache" "${NEW_ROOT}/var/cache"
+mount -o subvol="/${NEW_SUBVOL}" "/dev/mapper/${MAPPER_NAME}" "$NEW_ROOT" || {
+    echo "ERROR: Failed to mount new root" >&2
+    exit 1
+}
+
+mount --bind "${ESP}" "${NEW_ROOT}/efi" || {
+    echo "ERROR: Failed to bind mount ESP" >&2
+    exit 1
+}
+
+mount --bind "/var/cache" "${NEW_ROOT}/var/cache" || {
+    echo "ERROR: Failed to bind mount cache" >&2
+    exit 1
+}
 
 echo ":: Upgrading system..."
-arch-chroot "$NEW_ROOT" pacman -Syu 
+arch-chroot "$NEW_ROOT" pacman -Syu || {
+    echo "ERROR: Upgrade failed" >&2
+    exit 1
+}
 
 echo ":: Updating fstab..."
-update_fstab "${NEW_ROOT}/etc/fstab" "$CURRENT_SUBVOL" "$NEW_SUBVOL"
+update_fstab "${NEW_ROOT}/etc/fstab" "$CURRENT_SUBVOL" "$NEW_SUBVOL" || {
+    echo "ERROR: Failed to update fstab" >&2
+    exit 1
+}
+if ! grep -q "subvol=/${NEW_SUBVOL}" "${NEW_ROOT}/etc/fstab"; then
+    echo "ERROR: fstab update verification failed" >&2
+    exit 1
+fi
 
 echo ":: Building UKI..."
 UKI_PATH=$(build_uki "$GEN_ID" "$NEW_ROOT" "$NEW_SUBVOL") || exit 1
@@ -85,10 +163,12 @@ UKI_PATH=$(build_uki "$GEN_ID" "$NEW_ROOT" "$NEW_SUBVOL") || exit 1
 echo ":: Signing UKI for Secure Boot..."
 sbctl sign "$UKI_PATH" || { echo "ERROR: Signing failed" >&2; exit 1; }
 
-umount -R "$NEW_ROOT"
+echo ":: Unmounting new root..."
+umount -R "$NEW_ROOT" || true
+SNAPSHOT_CREATED=0 
 
 echo ":: Running garbage collection..."
-garbage_collect "$KEEP_GENERATIONS"
+garbage_collect "$KEEP_GENERATIONS" || echo "WARN: Garbage collection had issues" >&2
 
 umount "$BTRFS_MOUNT" 2>/dev/null || true
 

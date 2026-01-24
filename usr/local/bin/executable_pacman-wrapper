@@ -1,10 +1,46 @@
 #!/bin/bash
 # /usr/local/bin/pacman-wrapper
 
-if [[ "$1" == "-S"* ]] && [[ "$*" =~ (^|[[:space:]])-[A-Za-z]*u|--(sysupgrade) ]]; then
-    echo "Hint: Use 'sudo atomic-upgrade' for atomic updates"
-    read -t 30 -rp "Continue with regular pacman? [y/N] " answer || exit 1
-    [[ "$answer" =~ ^[Yy]$ ]] || exit 1
+has_sync=0
+has_refresh=0
+has_upgrade=0
+parsing_opts=1
+
+for arg in "$@"; do
+    [[ $parsing_opts -eq 0 ]] && continue
+    
+    case "$arg" in
+        --) parsing_opts=0 ;;
+        --sync) has_sync=1 ;;
+        --refresh) has_refresh=1 ;;
+        --sysupgrade) has_upgrade=1 ;;
+        -*)
+            if [[ "$arg" =~ ^-[^-] ]]; then
+                [[ "$arg" == *S* ]] && has_sync=1
+                [[ "$arg" == *y* ]] && has_refresh=1
+                [[ "$arg" == *u* ]] && has_upgrade=1
+            fi
+            ;;
+    esac
+done
+
+if [[ $has_sync -eq 1 && $has_upgrade -eq 1 ]]; then
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║  Hint: Use 'sudo atomic-upgrade' for atomic updates        ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    
+    if [[ -t 0 ]]; then
+        read -t 30 -rp "Continue with regular pacman anyway? [y/N] " answer
+        case "$answer" in
+            [Yy]*) ;;
+            *) echo "Aborted."; exit 1 ;;
+        esac
+    else
+        echo "Non-interactive mode, aborting for safety."
+        exit 1
+    fi
+elif [[ $has_sync -eq 1 && $has_refresh -eq 1 && $has_upgrade -eq 0 ]]; then
+    echo "Warning: -Sy without -u may cause partial upgrades. Consider -Syu."
 fi
 
 exec /usr/bin/pacman "$@"

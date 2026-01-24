@@ -7,14 +7,58 @@ set -euo pipefail
 
 source /usr/local/lib/atomic/common.sh
 
-acquire_lock
+show_help() {
+    cat << EOF
+atomic-gc - Garbage collect old generations
 
-trap 'mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"; [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&-' EXIT
+Usage: atomic-gc [OPTIONS] [COUNT]
 
-KEEP_COUNT="${1:-$KEEP_GENERATIONS}"
+Options:
+    -n, --dry-run    Show what would be deleted
+    -h, --help       Show this help
+    COUNT            Number of generations to keep (default: $KEEP_GENERATIONS)
+
+EOF
+    exit 0
+}
+
+case "${1:-}" in
+    -h|--help) show_help ;;
+esac
+
+DRY_RUN=0
+KEEP_COUNT="$KEEP_GENERATIONS"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run) DRY_RUN=1; shift ;;
+        [0-9]*) 
+            if [[ "$1" =~ ^[0-9]+$ ]]; then
+                KEEP_COUNT="$1"
+            else
+                echo "ERROR: Invalid number: $1" >&2
+                exit 1
+            fi
+            shift 
+            ;;
+        *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+    esac
+done
+
+validate_config || exit 1
+
 if ! [[ "$KEEP_COUNT" =~ ^[0-9]+$ ]] || [[ "$KEEP_COUNT" -lt 1 ]]; then
     echo "ERROR: Invalid generation count: $KEEP_COUNT" >&2
     exit 1
 fi
 
-garbage_collect "$KEEP_COUNT"
+acquire_lock
+
+cleanup_gc() {
+    set +e
+    mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"
+    [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&-
+}
+trap cleanup_gc EXIT
+
+garbage_collect "$KEEP_COUNT" "$DRY_RUN"
