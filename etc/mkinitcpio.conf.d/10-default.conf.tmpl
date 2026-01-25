@@ -1,0 +1,4 @@
+HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt btrfs filesystems fsck)
+{{- if eq .chezmoi.hostname "desktop-1" }}
+MODULES=( nvidia nvidia_modeset nvidia_uvm nvidia_drm )
+{{- end}}
