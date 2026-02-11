@@ -67,20 +67,15 @@ cleanup() {
 
     echo ":: Cleaning up..."
 
-    # Unmount bind mounts and new root (retry with lazy unmount)
-    if [[ -n "${NEW_ROOT:-}" ]]; then
-        local mounts=("${NEW_ROOT}/var/cache" "${NEW_ROOT}/efi" "$NEW_ROOT")
-
-        for _ in {1..3}; do
-            local still_mounted=0
-            for mp in "${mounts[@]}"; do
-                if mountpoint -q "$mp" 2>/dev/null; then
-                    umount -l "$mp" 2>/dev/null || still_mounted=1
-                fi
-            done
-            [[ $still_mounted -eq 0 ]] && break
+    # Recursive unmount handles any leftover bind mounts from arch-chroot
+    if [[ -n "${NEW_ROOT:-}" ]] && mountpoint -q "$NEW_ROOT" 2>/dev/null; then
+        # First try clean recursive unmount
+        umount -R "$NEW_ROOT" 2>/dev/null
+        # If that fails, force lazy recursive unmount
+        if mountpoint -q "$NEW_ROOT" 2>/dev/null; then
+            umount -Rl "$NEW_ROOT" 2>/dev/null
             sleep 1
-        done
+        fi
     fi
 
     # On failure: remove the half-built snapshot and UKI
@@ -174,7 +169,7 @@ echo ":: Signing UKI for Secure Boot..."
 sbctl sign "$UKI_PATH" || { echo "ERROR: Signing failed" >&2; exit 1; }
 
 echo ":: Unmounting new root..."
-umount -R "$NEW_ROOT" || true
+umount -R "$NEW_ROOT" 2>/dev/null || true
 # Mark as successful — cleanup won't delete the snapshot
 SNAPSHOT_CREATED=0
 
