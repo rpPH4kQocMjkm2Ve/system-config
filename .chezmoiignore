@@ -1,4 +1,5 @@
-README
+secrets.enc.yaml
+README.md
 etc/btrbk.conf.example
 etc/systemd/network/br0.netdev
 etc/systemd/network/br0.network

@@ -1,8 +1,9 @@
+{{ $s := output "sops" "-d" (joinPath .chezmoi.sourceDir "secrets.enc.yaml") | fromYaml -}}
 polkit.addRule(function(action, subject) {
     if ((action.id == "org.freedesktop.resolve1.set-dns-servers" ||
          action.id == "org.freedesktop.resolve1.set-domains" ||
          action.id == "org.freedesktop.resolve1.set-default-route") &&
-        subject.user == "{{ .username }}") {
+        subject.user == "{{ index $s "polkit" "username" }}") {
         return polkit.Result.YES;
     }
 });
