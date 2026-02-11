@@ -1,5 +1,8 @@
 #!/bin/bash
 # /usr/local/bin/atomic-gc
+#
+# Garbage collect old generations, keeping the most recent N
+# plus the currently booted one.
 
 [[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
 
@@ -32,14 +35,14 @@ KEEP_COUNT="$KEEP_GENERATIONS"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -n|--dry-run) DRY_RUN=1; shift ;;
-        [0-9]*) 
+        [0-9]*)
             if [[ "$1" =~ ^[0-9]+$ ]]; then
                 KEEP_COUNT="$1"
             else
                 echo "ERROR: Invalid number: $1" >&2
                 exit 1
             fi
-            shift 
+            shift
             ;;
         *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
     esac

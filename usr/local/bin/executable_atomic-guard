@@ -1,18 +1,38 @@
 #!/bin/bash
 # /usr/local/bin/atomic-guard
+#
+# Pacman hook guard: blocks direct system upgrades.
+# Allows upgrades only when called from atomic-upgrade (via env + lock)
+# or from AUR helpers (yay, paru, etc.) which invoke pacman themselves.
 
 if [[ -r /usr/local/lib/atomic/common.sh ]]; then
     source /usr/local/lib/atomic/common.sh 2>/dev/null || true
 fi
 LOCK_FILE="${LOCK_FILE:-/var/lock/atomic-upgrade.lock}"
 
+# If called during atomic-upgrade: verify lock is actually held
 if [[ "${ATOMIC_UPGRADE:-}" == "1" ]]; then
     [[ -f "$LOCK_FILE" ]] || exit 1
+    # If we CAN acquire the lock, nobody holds it — that's wrong
     flock -n "$LOCK_FILE" -c true 2>/dev/null && exit 1
     exit 0
 fi
 
-if pstree -s $$ | grep -qE 'yay|paru'; then
+# Allow AUR helpers — walk up the process tree via /proc
+is_child_of_aur_helper() {
+    local pid=$$
+    while [[ $pid -ne 1 ]]; do
+        local comm
+        comm=$(cat "/proc/$pid/comm" 2>/dev/null) || break
+        case "$comm" in
+            yay|paru|pikaur|aura) return 0 ;;
+        esac
+        pid=$(awk '{print $4}' "/proc/$pid/stat" 2>/dev/null) || break
+    done
+    return 1
+}
+
+if is_child_of_aur_helper; then
     exit 0
 fi
 

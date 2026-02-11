@@ -1,5 +1,8 @@
 #!/bin/bash
-# /usr/local/bin/pacman-wrapper
+# /usr/local/bin/pacman (wrapper)
+#
+# Intercepts pacman -Syu to suggest atomic-upgrade instead.
+# Detects AUR helpers as parent processes to avoid double prompts.
 
 has_sync=0
 has_refresh=0
@@ -8,7 +11,7 @@ parsing_opts=1
 
 for arg in "$@"; do
     [[ $parsing_opts -eq 0 ]] && continue
-    
+
     case "$arg" in
         --) parsing_opts=0 ;;
         --sync) has_sync=1 ;;
@@ -25,10 +28,18 @@ for arg in "$@"; do
 done
 
 if [[ $has_sync -eq 1 && $has_upgrade -eq 1 ]]; then
+    # Skip hint if parent is an AUR helper (they call pacman internally)
+    parent_comm=$(cat "/proc/$PPID/comm" 2>/dev/null || true)
+    case "$parent_comm" in
+        yay|paru|pikaur|aura)
+            exec /usr/bin/pacman "$@"
+            ;;
+    esac
+
     echo "╔════════════════════════════════════════════════════════════╗"
-    echo "║  Hint: Use 'sudo atomic-upgrade' for atomic updates        ║"
+    echo "║  Hint: Use 'sudo atomic-upgrade' for atomic updates      ║"
     echo "╚════════════════════════════════════════════════════════════╝"
-    
+
     if [[ -t 0 ]]; then
         read -t 30 -rp "Continue with regular pacman anyway? [y/N] " answer
         case "$answer" in
