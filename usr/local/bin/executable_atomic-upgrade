@@ -107,8 +107,8 @@ mkdir -p "$NEW_ROOT"
 ensure_btrfs_mounted
 
 echo ":: Verifying current system..."
-[[ -f "/boot/vmlinuz-linux" ]] || { echo "ERROR: No kernel in current system" >&2; exit 1; }
-[[ -f "/boot/initramfs-linux.img" ]] || { echo "ERROR: No initramfs in current system" >&2; exit 1; }
+[[ -f "/boot/vmlinuz-${KERNEL_PKG}" ]] || { echo "ERROR: No kernel: vmlinuz-${KERNEL_PKG}" >&2; exit 1; }
+[[ -f "/boot/initramfs-${KERNEL_PKG}.img" ]] || { echo "ERROR: No initramfs: initramfs-${KERNEL_PKG}.img" >&2; exit 1; }
 
 echo ":: Verifying current subvolume..."
 validate_subvolume "$CURRENT_SUBVOL" || {

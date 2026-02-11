@@ -11,6 +11,7 @@ NEW_ROOT="/mnt/newroot"
 ESP="/efi"
 KEEP_GENERATIONS=3
 MAPPER_NAME="root_crypt"
+KERNEL_PKG="linux"
 LOCK_FILE="/var/lock/atomic-upgrade.lock"
 LOG_FILE="/var/log/atomic-upgrade.log"
 # Kernel security parameters
@@ -32,7 +33,7 @@ load_config() {
     fi
 
     # Whitelist of allowed config keys
-    local -a allowed=(BTRFS_MOUNT NEW_ROOT ESP KEEP_GENERATIONS MAPPER_NAME KERNEL_PARAMS)
+    local -a allowed=(BTRFS_MOUNT NEW_ROOT ESP KEEP_GENERATIONS MAPPER_NAME KERNEL_PARAMS KERNEL_PKG)
 
     while IFS='=' read -r key value; do
         # Strip whitespace
@@ -250,10 +251,12 @@ build_uki() {
     local uki_path="${ESP}/EFI/Linux/arch-${gen_id}.efi"
     local os_release_tmp=""
 
-    [[ -f "${new_root}/boot/vmlinuz-linux" ]] || { echo "ERROR: No kernel" >&2; return 1; }
-    [[ -f "${new_root}/boot/initramfs-linux.img" ]] || { echo "ERROR: No initramfs" >&2; return 1; }
+    local kernel="${new_root}/boot/vmlinuz-${KERNEL_PKG}"
+    local initramfs="${new_root}/boot/initramfs-${KERNEL_PKG}.img"
 
-    # Auto-detect root device and build cmdline (replaces hardcoded LUKS logic)
+    [[ -f "$kernel" ]] || { echo "ERROR: No kernel: $kernel" >&2; return 1; }
+    [[ -f "$initramfs" ]] || { echo "ERROR: No initramfs: $initramfs" >&2; return 1; }
+
     local root_cmdline
     root_cmdline=$(python3 /usr/local/lib/atomic/rootdev.py cmdline "$new_subvol") || {
         echo "ERROR: Cannot detect root device for cmdline" >&2
@@ -263,7 +266,6 @@ build_uki() {
     local cmdline="${root_cmdline} ${KERNEL_PARAMS}"
 
     os_release_tmp=$(mktemp) || { echo "ERROR: Cannot create temp file" >&2; return 1; }
-    # Clean up temp file when this function returns
     trap 'rm -f "$os_release_tmp"' RETURN
 
     sed "s|^PRETTY_NAME=.*|PRETTY_NAME=\"Arch Linux (${gen_id})\"|" \
@@ -273,8 +275,8 @@ build_uki() {
     }
 
     if ! ukify build \
-        --linux="${new_root}/boot/vmlinuz-linux" \
-        --initrd="${new_root}/boot/initramfs-linux.img" \
+        --linux="$kernel" \
+        --initrd="$initramfs" \
         --cmdline="$cmdline" \
         --os-release="@${os_release_tmp}" \
         --output="$uki_path"; then
