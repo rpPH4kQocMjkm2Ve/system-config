@@ -15,6 +15,8 @@ Safety features:
   - Preserves leading slash style in subvol= values
 """
 
+import os
+import stat as stat_mod
 import sys
 import shutil
 from pathlib import Path
@@ -153,9 +155,14 @@ def update_fstab(path_str: str, old_subvol: str, new_subvol: str) -> bool:
             file=sys.stderr,
         )
 
-    # Atomic write: write to .tmp, then rename (atomic on same filesystem)
+    # Atomic write: preserve original permissions
     tmp = path.with_suffix(".tmp")
+    original_stat = path.stat()
     tmp.write_text("".join(e.format() for e in entries))
+
+    os.chown(tmp, original_stat.st_uid, original_stat.st_gid)
+    os.chmod(tmp, stat_mod.S_IMODE(original_stat.st_mode))
+
     tmp.replace(path)
 
     # Post-write verification
