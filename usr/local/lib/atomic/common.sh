@@ -38,6 +38,9 @@ load_config() {
     while IFS='=' read -r key value; do
         # Strip whitespace
         key="${key// /}"
+        # Trim leading/trailing whitespace from value
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
 
         # Skip comments and blank lines
         [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
