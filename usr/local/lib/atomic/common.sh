@@ -244,6 +244,7 @@ list_generations() {
         name="${name%.efi}"
         gens+=("$name")
     done
+    [[ ${#gens[@]} -eq 0 ]] && return 0
     printf '%s\n' "${gens[@]}" | sort -r
 }
 
