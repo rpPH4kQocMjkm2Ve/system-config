@@ -38,6 +38,8 @@ DRY_RUN=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run|-n) DRY_RUN=1; shift ;;
+        --) shift; break ;;
+        -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
         *) break ;;
     esac
 done
