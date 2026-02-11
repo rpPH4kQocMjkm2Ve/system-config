@@ -149,16 +149,7 @@ def _detect_dm_type(mapper: str, info: dict) -> None:
 
 
 def build_cmdline(info: dict, new_subvol: str) -> str:
-    """Build kernel cmdline fragment from detected root info.
-
-    Handles:
-      - Plain btrfs: root=<device> rootflags=subvol=<subvol>
-      - LUKS:        rd.luks.name=<uuid>=<name> root=/dev/mapper/<name> rootflags=...
-      - LVM:         root=/dev/mapper/<name> rootflags=...
-      - LUKS+LVM:    rd.luks.name=... root=/dev/mapper/<name> rootflags=...
-
-    Does NOT include extra kernel security params — those come from config.
-    """
+    """Build kernel cmdline fragment from detected root info."""
     parts = []
 
     # Add LUKS unlock directive if applicable
@@ -168,6 +159,10 @@ def build_cmdline(info: dict, new_subvol: str) -> str:
         )
 
     parts.append(f"root={info['root_arg']}")
+
+    if info.get("fstype"):
+        parts.append(f"rootfstype={info['fstype']}")
+
     parts.append(f"rootflags=subvol={new_subvol}")
 
     return " ".join(parts)
