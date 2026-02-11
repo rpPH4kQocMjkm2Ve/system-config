@@ -10,7 +10,7 @@ _git_prompt() {
 }
 
 setopt prompt_subst
-PROMPT='%(?:%B%F{green}➜ :%B%F{red}➜ )%f%b %F{cyan}%c%f $(_git_prompt)'
+PROMPT='%(?:%B%F{green}➜ :%B%F{red}➜ )%f%b %F{magenta}%n%f %F{cyan}%c%f $(_git_prompt)'
 
 # ── Keybindings ──────────────────────────────────
 # Ctrl+Left/Right
