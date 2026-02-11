@@ -1,6 +1,0 @@
-[Match]
-Name=br0
-
-[Network]
-DHCP=true
-IPv6AcceptRA=true
