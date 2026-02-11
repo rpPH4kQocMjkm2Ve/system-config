@@ -1,11 +1,10 @@
 secrets.enc.yaml
 README.md
 etc/btrbk.conf.example
-etc/systemd/network/br0.netdev
-etc/systemd/network/br0.network
+{{- if eq .chezmoi.hostname "laptop-1" }}
 etc/modprobe.d/10-nvidia.conf
 etc/pacman.d/hooks/block-nextcloud-user_c.hook
-{{- if eq .chezmoi.hostname "desktop-1" }}
+{{- else if eq .chezmoi.hostname "desktop-1" }}
 etc/tmpfiles.d/battery.conf
 {{- end }}
 
