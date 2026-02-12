@@ -12,7 +12,37 @@ Includes an atomic upgrade system for Arch Linux on Btrfs + UKI + Secure Boot.
 - **Filesystem**: Btrfs on LUKS, automated snapshots via btrbk
 - **Network**: systemd-networkd (wired + wifi)
 - **Containers**: Podman with btrfs storage driver
-- **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam
+- **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam, hardened_malloc
+
+## hardened_malloc
+
+[hardened_malloc](https://github.com/GrapheneOS/hardened_malloc) is built from source via `run_onchange_build_hardened_malloc.sh` and deployed to `/usr/local/lib/`.
+
+Both variants are built:
+- **default** (`libhardened_malloc.so`) — full hardening, used per-app via bwrap `LD_PRELOAD`
+- **light** (`libhardened_malloc-light.so`) — balanced, loaded system-wide via `/etc/ld.so.preload`
+
+### Updating
+
+```bash
+# 1. Check latest tag
+git ls-remote --tags https://github.com/GrapheneOS/hardened_malloc.git | tail -5
+
+# 2. Update TAG and version comment in run_onchange_build_hardened_malloc.sh
+
+# 3. Rebuild and deploy
+sudo chezmoi apply  # builds into source dir
+sudo chezmoi apply  # deploys to /usr/local/lib/
+```
+
+### Compatibility
+
+Applications with custom allocators (Chromium/PartitionAlloc, Firefox/mozjemalloc, GIMP/glycin) are incompatible and must have hardened_malloc disabled in their bwrap wrappers. See [user dotfiles](link) for details.
+
+### Configuration
+
+- `/etc/ld.so.preload` — system-wide light variant
+- `/etc/sysctl.d/20-hardened-malloc.conf` — `vm.max_map_count = 1048576` for guard slabs
 
 ## Atomic upgrade system
 
@@ -80,20 +110,25 @@ sudo atomic-gc --dry-run 2     # preview: keep last 2
 │   ├── atomic.conf.tmpl     # atomic-upgrade config (per-host kernel params)
 │   ├── btrbk/               # Btrfs snapshot policy
 │   ├── containers/          # Podman (btrfs driver, per-host graphroot)
+│   ├── ld.so.preload        # hardened_malloc-light system-wide
 │   ├── mkinitcpio.*         # Initramfs (per-host nvidia modules)
 │   ├── modprobe.d/          # Kernel modules (nvidia)
 │   ├── pacman.d/hooks/      # Pacman hooks
 │   ├── pam.d/               # PAM (gnome-keyring auto-unlock)
 │   ├── polkit-1/            # Polkit rules (sing-box DNS)
 │   ├── security/            # faillock
-│   ├── sysctl.d/            # Kernel parameters
+│   ├── sysctl.d/            # Kernel parameters + hardened_malloc vm.max_map_count
 │   ├── systemd/             # networkd, journald, coredump, zram
 │   └── tmpfiles.d/          # Battery, USB lock
 ├── root/
 │   └── dot_zshrc            # Root shell config
+├── run_onchange_build_hardened_malloc.sh
 └── usr/local/
     ├── bin/                 # atomic-upgrade tooling + pacman wrapper
-    └── lib/atomic/          # Shared library + Python helpers
+    └── lib/
+        ├── atomic/          # Shared library + Python helpers
+        ├── libhardened_malloc.so       # (built, gitignored)
+        └── libhardened_malloc-light.so # (built, gitignored)
 ```
 
 ## Hosts
@@ -166,6 +201,7 @@ sudo systemctl enable --now btrbk.timer
 - `python` ≥ 3.10 — fstab.py, rootdev.py
 - `chezmoi` — configuration management
 - `sops` + `age` — secret encryption
+- `base-devel` — building hardened_malloc
 
 ### Optional
 
