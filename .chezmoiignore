@@ -1,3 +1,5 @@
+usr/local/lib/.hardened_malloc.tag
+LICENSE
 secrets.enc.yaml
 README.md
 etc/btrbk.conf.example
