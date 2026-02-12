@@ -1,3 +1,4 @@
 usr/local/lib/libhardened_malloc.so
 usr/local/lib/libhardened_malloc-light.so
+usr/local/lib/libfake_rlimit.so
 usr/local/lib/.hardened_malloc.tag
