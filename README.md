@@ -30,7 +30,7 @@ A `libfake_rlimit.so` shim is also built and preloaded before hardened_malloc. I
 
 ```bash
 # 1. Check latest tag
-git ls-remote --tags https://github.com/GrapheneOS/hardened_malloc.git | tail -5
+git ls-remote --tags https://github.com/GrapheneOS/hardened_malloc.git | grep -oP 'refs/tags/\K[0-9]{10}$' | sort -n | tail -5
 
 # 2. Update TAG (and FAKE_RLIMIT_VER if shim changed) in run_onchange_build_hardened_malloc.sh
 
