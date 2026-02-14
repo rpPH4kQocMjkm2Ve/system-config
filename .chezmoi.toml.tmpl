@@ -1,3 +1,8 @@
+{{- $nvidia      := promptBoolOnce . "nvidia"      "NVIDIA GPU (modules, modprobe)" -}}
+{{- $tpm2_unlock := promptBoolOnce . "tpm2_unlock"  "TPM2 LUKS auto-unlock" -}}
+{{- $laptop      := promptBoolOnce . "laptop"       "Laptop (battery tmpfiles)" -}}
+{{- $laptop      := promptBoolOnce . "block_nextcloud_user_c"       "Block nextcloud for user_c" -}}
+
 destDir = "/"
 
 encryption = "age"
@@ -7,4 +12,10 @@ encryption = "age"
         "age1fyc50afgtkrq7xdqr0859ncyrvncxaclvfz83qyp3zq96mg47s5quqmvxt",
 	"age14r9xns8kj0kagv4k7nm8hs85v5utkcw32vwqaczwzs8cz8zrgqeqmeakz0"
     ]
+
+[data]
+    nvidia      = {{ $nvidia }}
+    tpm2_unlock = {{ $tpm2_unlock }}
+    laptop      = {{ $laptop }}
+    block_nextcloud_user_c      = {{ $block_nextcloud_user_c }}
 

@@ -4,8 +4,4 @@ NEW_ROOT="/mnt/newroot"
 ESP="/efi"
 KEEP_GENERATIONS=3
 MAPPER_NAME="root_crypt"
-{{- if eq .chezmoi.hostname "desktop-1" }}
-KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
-{{- else if eq .chezmoi.hostname "laptop-1" }}
-KERNEL_PARAMS="rd.luks.options=tpm2-device=auto rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
-{{- end }}
+KERNEL_PARAMS="{{ if .tpm2_unlock }}rd.luks.options=tpm2-device=auto {{ end }}rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"

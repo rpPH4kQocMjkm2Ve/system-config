@@ -3,10 +3,13 @@ LICENSE
 secrets.enc.yaml
 README.md
 etc/btrbk.conf.example
-{{- if eq .chezmoi.hostname "laptop-1" }}
+{{- if not eq .nvidia }}
 etc/modprobe.d/10-nvidia.conf
+{{- end }}
+{{- if not eq .block_nextcloud_user_c }}
 etc/pacman.d/hooks/block-nextcloud-user_c.hook
-{{- else if eq .chezmoi.hostname "desktop-1" }}
+{{-end }}
+{{- if not eq .laptop }}
 etc/tmpfiles.d/battery.conf
 {{- end }}
 
