@@ -137,14 +137,17 @@ sudo atomic-gc --dry-run 2     # preview: keep last 2
         └── libhardened_malloc-light.so # (built, gitignored)
 ```
 
-## Hosts
+## Per-host configuration
 
-Configuration adapts via `chezmoi.hostname`:
+Feature flags are set via `chezmoi init` prompts and stored in `/root/.config/chezmoi/chezmoi.toml`:
 
-| Host | Specifics |
-|------|-----------|
-| `desktop-1` | nvidia modules, podman storage on ssd2, btrbk target on ssd2, no battery.conf |
-| `laptop-1` | TPM2 auto-unlock (`rd.luks.options=tpm2-device=auto`), battery tmpfiles |
+| Variable | Description |
+|---|---|
+| `nvidia` | NVIDIA GPU (mkinitcpio modules, modprobe config) |
+| `tpm2_unlock` | TPM2 LUKS auto-unlock (`rd.luks.options=tpm2-device=auto`) |
+| `laptop` | Battery charge thresholds (tmpfiles) |
+
+Per-host data (btrbk targets, podman graphroot) is stored in `secrets.enc.yaml`, keyed by hostname.
 
 ## Secrets
 
