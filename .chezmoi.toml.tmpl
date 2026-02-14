@@ -1,7 +1,7 @@
 {{- $nvidia      := promptBoolOnce . "nvidia"      "NVIDIA GPU (modules, modprobe)" -}}
 {{- $tpm2_unlock := promptBoolOnce . "tpm2_unlock"  "TPM2 LUKS auto-unlock" -}}
 {{- $laptop      := promptBoolOnce . "laptop"       "Laptop (battery tmpfiles)" -}}
-{{- $laptop      := promptBoolOnce . "block_nextcloud_user_c"       "Block nextcloud for user_c" -}}
+{{- $block_nextcloud_user_c      := promptBoolOnce . "block_nextcloud_user_c"       "Block nextcloud for user_c" -}}
 
 destDir = "/"
 

@@ -3,13 +3,13 @@ LICENSE
 secrets.enc.yaml
 README.md
 etc/btrbk.conf.example
-{{- if not eq .nvidia }}
+{{- if not .nvidia }}
 etc/modprobe.d/10-nvidia.conf
 {{- end }}
-{{- if not eq .block_nextcloud_user_c }}
+{{- if not .block_nextcloud_user_c }}
 etc/pacman.d/hooks/block-nextcloud-user_c.hook
-{{-end }}
-{{- if not eq .laptop }}
+{{- end }}
+{{- if not .laptop }}
 etc/tmpfiles.d/battery.conf
 {{- end }}
 
