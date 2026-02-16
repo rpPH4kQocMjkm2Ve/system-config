@@ -1,0 +1,13 @@
+{{ $s := output "sops" "-d" (joinPath .chezmoi.sourceDir "secrets.enc.yaml") | fromYaml -}}
+{{ $subnet1 := index $s "firewall" "subnet1" -}}
+{{ $podman_subnet := index $s "firewall" "podman_subnet" -}}
+
+<?xml version="1.0" encoding="utf-8"?>
+<zone target="ACCEPT">
+  <short>Trusted</short>
+  <description>All network connections are accepted.</description>
+  <interface name="tun0"/>
+  <source address="{{ $subnet1 }}"/>
+  <source address="{{ $podman_subnet }}"/>
+  <forward/>
+</zone>
