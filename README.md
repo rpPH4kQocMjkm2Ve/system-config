@@ -11,6 +11,7 @@ Includes an atomic upgrade system for Arch Linux on Btrfs + UKI + Secure Boot.
 - **Boot**: systemd-boot with signed UKI (Secure Boot via sbctl)
 - **Filesystem**: Btrfs on LUKS, automated snapshots via btrbk
 - **Network**: systemd-networkd (wired + wifi)
+- **Firewall**: firewalld with per-user network blocking and trusted zone templating
 - **Containers**: Podman with btrfs storage driver
 - **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam, hardened_malloc
 
@@ -107,6 +108,29 @@ sudo atomic-gc --dry-run 2     # preview: keep last 2
 | `fstab.py` | Safe fstab editing (atomic write + verification + rollback) |
 | `rootdev.py` | Auto-detect root device type (LUKS/LVM/plain) |
 
+## Firewall
+
+[firewalld](https://firewalld.org/) configuration is templated with secrets from SOPS.
+
+### Per-user network blocking
+
+When `block_network_user_c` is enabled, firewalld direct rules drop all outbound IPv4/IPv6 traffic for the specified UID via iptables `owner` match:
+
+```xml
+<rule ipv="ipv4" table="filter" chain="OUTPUT" priority="0">-m owner --uid-owner <UID> -j DROP</rule>
+<rule ipv="ipv6" table="filter" chain="OUTPUT" priority="0">-m owner --uid-owner <UID> -j DROP</rule>
+```
+
+The UID is read from `secrets.enc.yaml` (`users.user_c.uid`).
+
+### Trusted zone
+
+The trusted zone template adds:
+- `tun0` interface (VPN)
+- Local subnet and Podman subnet as trusted sources
+
+Subnet values are stored encrypted in `secrets.enc.yaml` (`firewall.subnet1`, `firewall.podman_subnet`).
+
 ## Structure
 
 ```
@@ -116,6 +140,10 @@ sudo atomic-gc --dry-run 2     # preview: keep last 2
 │   ├── atomic.conf.tmpl     # atomic-upgrade config (per-host kernel params)
 │   ├── btrbk/               # Btrfs snapshot policy
 │   ├── containers/          # Podman (btrfs driver, per-host graphroot)
+│   ├── firewalld/
+│   │   ├── direct.xml.tmpl       # Per-user outbound block (iptables owner match)
+│   │   └── zones/
+│   │       └── trusted.xml.tmpl  # Trusted zone (VPN, subnets)
 │   ├── mkinitcpio.*         # Initramfs (per-host nvidia modules)
 │   ├── modprobe.d/          # Kernel modules (nvidia)
 │   ├── pacman.d/hooks/      # Pacman hooks
@@ -146,8 +174,10 @@ Feature flags are set via `chezmoi init` prompts and stored in `/root/.config/ch
 | `nvidia` | NVIDIA GPU (mkinitcpio modules, modprobe config) |
 | `tpm2_unlock` | TPM2 LUKS auto-unlock (`rd.luks.options=tpm2-device=auto`) |
 | `laptop` | Battery charge thresholds (tmpfiles) |
+| `block_nextcloud_user_c` | Block Nextcloud access for user_c |
+| `block_network_user_c` | Block all network access for user_c (firewalld direct rules) |
 
-Per-host data (btrbk targets, podman graphroot) is stored in `secrets.enc.yaml`, keyed by hostname.
+Per-host data (btrbk targets, podman graphroot, firewall subnets, user UIDs) is stored in `secrets.enc.yaml`, keyed by hostname or category.
 
 ## Secrets
 
@@ -161,6 +191,12 @@ Each machine has its own age key, stored separately from this repo.
 # secrets.enc.yaml (decrypted view)
 polkit:
     username: "actual_username"
+firewall:
+    subnet1: "192.168.x.x/24"
+    podman_subnet: "10.x.x.x/16"
+users:
+    user_c:
+        uid: 1001
 ```
 
 Templates access secrets via:
@@ -217,3 +253,4 @@ sudo systemctl enable --now btrbk.timer
 
 - `btrbk` — automated Btrfs snapshots
 - `podman` — containers (btrfs storage driver)
+- `firewalld` — firewall with per-user blocking and trusted zones
