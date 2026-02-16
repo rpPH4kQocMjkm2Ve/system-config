@@ -2,25 +2,39 @@
 # /usr/local/bin/atomic-upgrade
 #
 # Atomic system upgrade for Arch Linux on Btrfs.
-# Creates a snapshot of the current root, upgrades it in a chroot,
+# Creates a snapshot of the current root, runs a command in a chroot,
 # builds a signed UKI, and registers it for next boot.
 
 [[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
 
 set -euo pipefail
 
-VERSION="0.0.2"
+VERSION="0.0.3"
 
 show_help() {
     cat << EOF
 atomic-upgrade v${VERSION} - Atomic system upgrades for Arch Linux
 
-Usage: atomic-upgrade [OPTIONS]
+Usage: atomic-upgrade [OPTIONS] [-- COMMAND...]
 
 Options:
     -n, --dry-run    Show what would be done
+    -t, --tag TAG    Custom tag for the snapshot (appended to timestamp)
+    --no-gc          Skip garbage collection after upgrade
     -h, --help       Show this help
     -V, --version    Show version
+
+Command:
+    Everything after -- is executed in the snapshot chroot instead of
+    the default "pacman -Syu".
+
+Examples:
+    atomic-upgrade                                  # Standard system upgrade
+    atomic-upgrade -t pre-nvidia                    # Upgrade with custom tag
+    atomic-upgrade --no-gc                          # Upgrade without garbage collection
+    atomic-upgrade -- pacman -S nvidia              # Install specific package
+    atomic-upgrade -t nvidia -- pacman -S nvidia-dkms
+    atomic-upgrade --no-gc -t cleanup -- pacman -Rns firefox
 
 EOF
     exit 0
@@ -35,14 +49,41 @@ export ATOMIC_UPGRADE=1
 source /usr/local/lib/atomic/common.sh
 
 DRY_RUN=0
+CUSTOM_TAG=""
+NO_GC=0
+CHROOT_CMD=()
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run|-n) DRY_RUN=1; shift ;;
-        --) shift; break ;;
+        --tag|-t)
+            [[ -n "${2:-}" ]] || { echo "ERROR: --tag requires an argument" >&2; exit 1; }
+            CUSTOM_TAG="$2"
+            shift 2
+            ;;
+        --no-gc) NO_GC=1; shift ;;
+        --) shift; CHROOT_CMD=("$@"); break ;;
         -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
-        *) break ;;
+        *) echo "ERROR: Unexpected argument: $1. Use -- before commands." >&2; exit 1 ;;
     esac
 done
+
+# Validate custom tag
+if [[ -n "$CUSTOM_TAG" ]]; then
+    if [[ ! "$CUSTOM_TAG" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "ERROR: Invalid tag '${CUSTOM_TAG}'. Use only letters, numbers, hyphens, underscores." >&2
+        exit 1
+    fi
+    if [[ ${#CUSTOM_TAG} -gt 48 ]]; then
+        echo "ERROR: Tag too long (max 48 characters)" >&2
+        exit 1
+    fi
+fi
+
+# Default chroot command
+if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
+    CHROOT_CMD=(/usr/bin/pacman -Syu)
+fi
 
 # Verify required variables are set
 [[ -n "${NEW_ROOT:-}" ]] || { echo "ERROR: NEW_ROOT not defined" >&2; exit 1; }
@@ -58,6 +99,7 @@ CURRENT_SUBVOL_RAW=$(get_current_subvol_raw)
 [[ -n "$CURRENT_SUBVOL_RAW" ]] || { echo "ERROR: Cannot detect current subvolume" >&2; exit 1; }
 CURRENT_SUBVOL="${CURRENT_SUBVOL_RAW#/}"
 GEN_ID=$(date +%Y%m%d-%H%M%S)
+[[ -n "$CUSTOM_TAG" ]] && GEN_ID="${GEN_ID}-${CUSTOM_TAG}"
 NEW_SUBVOL="root-${GEN_ID}"
 SNAPSHOT_CREATED=0
 
@@ -97,6 +139,7 @@ trap cleanup EXIT
 
 
 echo ":: Current: ${CURRENT_SUBVOL_RAW} → New: /${NEW_SUBVOL}"
+echo ":: Command: ${CHROOT_CMD[*]}"
 
 mkdir -p "$NEW_ROOT"
 ensure_btrfs_mounted
@@ -116,10 +159,18 @@ check_btrfs_space "$BTRFS_MOUNT" 10 || exit 1
 check_esp_space 250 || exit 1
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo ":: DRY RUN - would create: root-${GEN_ID}"
-    echo ":: DRY RUN - packages to upgrade:"
-    /usr/bin/pacman -Syu --print 2>&1 | head -50
-    echo ":: DRY RUN - would create: ${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
+    echo ":: DRY RUN - would create snapshot: ${NEW_SUBVOL}"
+    echo ":: DRY RUN - chroot command: ${CHROOT_CMD[*]}"
+    if [[ "${CHROOT_CMD[*]}" == "/usr/bin/pacman -Syu" ]]; then
+        echo ":: DRY RUN - packages to upgrade:"
+        /usr/bin/pacman -Syu --print 2>&1 | head -50
+    fi
+    echo ":: DRY RUN - would create UKI: ${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
+    if [[ "$NO_GC" -eq 0 ]]; then
+        echo ":: DRY RUN - would run garbage collection"
+    else
+        echo ":: DRY RUN - garbage collection: disabled"
+    fi
     echo ":: DRY RUN complete, no changes made"
     exit 0
 fi
@@ -145,9 +196,9 @@ mount --bind "/var/cache" "${NEW_ROOT}/var/cache" || {
     exit 1
 }
 
-echo ":: Upgrading system..."
-arch-chroot "$NEW_ROOT" /usr/bin/pacman -Syu || {
-    echo "ERROR: Upgrade failed" >&2
+echo ":: Running: ${CHROOT_CMD[*]}"
+arch-chroot "$NEW_ROOT" "${CHROOT_CMD[@]}" || {
+    echo "ERROR: Command failed: ${CHROOT_CMD[*]}" >&2
     exit 1
 }
 
@@ -173,8 +224,12 @@ umount -R "$NEW_ROOT" 2>/dev/null || true
 # Mark as successful — cleanup won't delete the snapshot
 SNAPSHOT_CREATED=0
 
-echo ":: Running garbage collection..."
-garbage_collect "$KEEP_GENERATIONS" || echo "WARN: Garbage collection had issues" >&2
+if [[ "$NO_GC" -eq 0 ]]; then
+    echo ":: Running garbage collection..."
+    garbage_collect "$KEEP_GENERATIONS" || echo "WARN: Garbage collection had issues" >&2
+else
+    echo ":: Garbage collection skipped (--no-gc)"
+fi
 
 umount "$BTRFS_MOUNT" 2>/dev/null || true
 
