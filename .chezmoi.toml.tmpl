@@ -2,6 +2,7 @@
 {{- $tpm2_unlock := promptBoolOnce . "tpm2_unlock"  "TPM2 LUKS auto-unlock" -}}
 {{- $laptop      := promptBoolOnce . "laptop"       "Laptop (battery tmpfiles)" -}}
 {{- $block_nextcloud_user_c      := promptBoolOnce . "block_nextcloud_user_c"       "Block nextcloud for user_c" -}}
+{{- $block_network_user_c      := promptBoolOnce . "block_networ_user_c"       "Block network for user_c" -}}
 
 destDir = "/"
 
@@ -18,4 +19,5 @@ encryption = "age"
     tpm2_unlock = {{ $tpm2_unlock }}
     laptop      = {{ $laptop }}
     block_nextcloud_user_c      = {{ $block_nextcloud_user_c }}
+    block_network_user_c      = {{ $block_network_user_c }}
 

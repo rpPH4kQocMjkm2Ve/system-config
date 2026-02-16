@@ -1,0 +1,10 @@
+{{ $s := output "sops" "-d" (joinPath .chezmoi.sourceDir "secrets.enc.yaml") | fromYaml -}}
+{{ $user_c_uid := index $s "users" "user_c" "uid" -}}
+
+<?xml version="1.0" encoding="utf-8"?>
+<direct>
+  {{- if eq .block_network_user_c true }}
+  <rule ipv="ipv4" table="filter" chain="OUTPUT" priority="0">-m owner --uid-owner {{ $user_c_uid }} -j DROP</rule>
+  <rule ipv="ipv6" table="filter" chain="OUTPUT" priority="0">-m owner --uid-owner {{ $user_c_uid }} -j DROP</rule>
+  {{- end }}
+</direct>
