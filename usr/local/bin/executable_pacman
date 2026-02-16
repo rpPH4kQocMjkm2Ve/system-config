@@ -4,6 +4,11 @@
 # Intercepts pacman -Syu to suggest atomic-upgrade instead.
 # Detects AUR helpers as parent processes to avoid double prompts.
 
+# Bypass wrapper entirely during atomic-upgrade operations
+if [[ "${ATOMIC_UPGRADE:-}" == "1" ]]; then
+    exec /usr/bin/pacman "$@"
+fi
+
 has_sync=0
 has_refresh=0
 has_upgrade=0
