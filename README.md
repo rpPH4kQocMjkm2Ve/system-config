@@ -62,7 +62,7 @@ pacman -Syu  →  blocked by guard/wrapper
                 ↓
     1. Btrfs snapshot of current root
     2. Mount snapshot, arch-chroot into it
-    3. pacman -Syu inside chroot
+    3. Run command (default: pacman -Syu)
     4. Update fstab (subvol=)
     5. Build UKI (ukify)
     6. Sign with sbctl (Secure Boot)
@@ -76,11 +76,29 @@ Rollback: select a previous UKI entry in systemd-boot at boot time.
 ### Usage
 
 ```bash
-sudo atomic-upgrade            # full system upgrade
-sudo atomic-upgrade --dry-run  # preview without changes
-sudo atomic-gc                 # clean old generations (keep last 3 + current)
-sudo atomic-gc --dry-run 2     # preview: keep last 2
+sudo atomic-upgrade                                    # full system upgrade
+sudo atomic-upgrade --dry-run                          # preview without changes
+sudo atomic-upgrade -t pre-nvidia                      # upgrade with custom tag
+sudo atomic-upgrade --no-gc                            # upgrade without garbage collection
+sudo atomic-upgrade -- pacman -S nvidia-dkms           # install specific package
+sudo atomic-upgrade -t nvidia -- pacman -S nvidia-dkms # custom command with tag
+sudo atomic-upgrade --no-gc -t cleanup -- pacman -Rns firefox
+sudo atomic-gc                                         # clean old generations (keep last 3 + current)
+sudo atomic-gc --dry-run 2                             # preview: keep last 2
 ```
+
+### Guard layers
+
+The system has two layers preventing accidental direct upgrades:
+
+**`pacman` wrapper** (`/usr/local/bin/pacman`) — intercepts `pacman -Syu` and suggests `atomic-upgrade`. Detects AUR helpers to avoid double prompts. Bypassed entirely when `ATOMIC_UPGRADE=1` (inside chroot).
+
+**`atomic-guard`** (pacman hook) — blocks `pacman -Syu` at the hook level. Allows:
+- Package installs without `--sysupgrade` (`pacman -S`, `-R`, etc.)
+- Upgrades via `atomic-upgrade` (env var + lock verification)
+- Upgrades via AUR helpers (`yay`, `paru`, etc.)
+
+Inside chroot, `/run` is a fresh tmpfs so the lock file won't exist — the guard trusts the env var (only root can set it).
 
 ### Configuration
 
@@ -100,10 +118,10 @@ sudo atomic-gc --dry-run 2     # preview: keep last 2
 
 | File | Role |
 |------|------|
-| `atomic-upgrade` | Main upgrade script |
+| `atomic-upgrade` | Main upgrade script — snapshot, chroot, UKI, sign |
 | `atomic-gc` | Garbage collection of old generations |
-| `atomic-guard` | Pacman hook — blocks direct `-Syu` |
-| `pacman` (wrapper) | Suggests `atomic-upgrade` on `-Syu` |
+| `atomic-guard` | Pacman hook — blocks direct `-Syu`, allows installs/removes |
+| `pacman` (wrapper) | Suggests `atomic-upgrade` on `-Syu`, bypassed in chroot |
 | `common.sh` | Shared library (config, locking, btrfs, UKI build, GC) |
 | `fstab.py` | Safe fstab editing (atomic write + verification + rollback) |
 | `rootdev.py` | Auto-detect root device type (LUKS/LVM/plain) |
