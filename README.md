@@ -85,6 +85,9 @@ sudo atomic-upgrade -t nvidia -- pacman -S nvidia-dkms # custom command with tag
 sudo atomic-upgrade --no-gc -t cleanup -- pacman -Rns firefox
 sudo atomic-gc                                         # clean old generations (keep last 3 + current)
 sudo atomic-gc --dry-run 2                             # preview: keep last 2
+sudo atomic-gc list                                    # list all generations
+sudo atomic-gc rm 20260217-143022                      # delete specific generation
+sudo atomic-gc rm -n 20260217-pre-nv                   # dry-run delete
 ```
 
 ### Guard layers
@@ -119,7 +122,7 @@ Inside chroot, `/run` is a fresh tmpfs so the lock file won't exist — the guar
 | File | Role |
 |------|------|
 | `atomic-upgrade` | Main upgrade script — snapshot, chroot, UKI, sign |
-| `atomic-gc` | Garbage collection of old generations |
+| `atomic-gc` | Generation management — garbage collection, list, manual delete |
 | `atomic-guard` | Pacman hook — blocks direct `-Syu`, allows installs/removes |
 | `pacman` (wrapper) | Suggests `atomic-upgrade` on `-Syu`, bypassed in chroot |
 | `common.sh` | Shared library (config, locking, btrfs, UKI build, GC) |
