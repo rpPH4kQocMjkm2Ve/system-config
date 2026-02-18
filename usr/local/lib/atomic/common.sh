@@ -350,14 +350,18 @@ garbage_collect() {
         fi
     fi
 
+    for d in "${BTRFS_MOUNT}"/root-*; do
+        [[ -d "$d" ]] || continue
+        local name="${d##*/}"
+        local gen="${name#root-}"
+        [[ "$name" == "$current_subvol" ]] && continue
+        if [[ ! -f "${ESP}/EFI/Linux/arch-${gen}.efi" ]]; then
+            echo "   Orphan: ${name} (no UKI)"
+            if [[ "$dry_run" -eq 0 ]]; then
+                btrfs subvolume delete "$d" 2>/dev/null || true
             fi
         fi
     done
-
-    local deleted_count=${#to_delete[@]}
-    if [[ $deleted_count -gt 0 && "$dry_run" -eq 0 ]]; then
-        echo "   Deleted ${deleted_count} generation(s)"
-    fi
 
     echo ":: Garbage collection done"
 }
