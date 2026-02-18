@@ -122,12 +122,18 @@ Inside chroot, `/run` is a fresh tmpfs so the lock file won't exist — the guar
 | File | Role |
 |------|------|
 | `atomic-upgrade` | Main upgrade script — snapshot, chroot, UKI, sign |
-| `atomic-gc` | Generation management — garbage collection, list, manual delete |
+| `atomic-gc` | Generation management — garbage collection, list, manual delete, orphan cleanup |
 | `atomic-guard` | Pacman hook — blocks direct `-Syu`, allows installs/removes |
 | `pacman` (wrapper) | Suggests `atomic-upgrade` on `-Syu`, bypassed in chroot |
 | `common.sh` | Shared library (config, locking, btrfs, UKI build, GC) |
 | `fstab.py` | Safe fstab editing (atomic write + verification + rollback) |
 | `rootdev.py` | Auto-detect root device type (LUKS/LVM/plain) |
+
+### Garbage collection
+
+`atomic-gc` and the GC phase of `atomic-upgrade` keep the last N generations (default 3) plus the currently booted one. Generations are sorted newest-first; the current subvolume is always preserved regardless of count.
+
+After deleting old generations, an orphan sweep finds any `root-*` subvolumes on the Btrfs top-level that have no matching UKI (`arch-*.efi`) on the ESP and removes them. This catches leftover subvolumes from interrupted upgrades or manual deletions of UKI files.
 
 ## Firewall
 
