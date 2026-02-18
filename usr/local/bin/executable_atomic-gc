@@ -62,7 +62,6 @@ trap cleanup_gc EXIT
 case "$COMMAND" in
     list)
         current_subvol=$(get_current_subvol)
-        ensure_btrfs_mounted || exit 1
         generations=$(list_generations)
         [[ -z "$generations" ]] && { echo "No generations found"; exit 0; }
         for gen_id in $generations; do
