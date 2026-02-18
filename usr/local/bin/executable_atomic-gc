@@ -1,8 +1,5 @@
 #!/bin/bash
 # /usr/local/bin/atomic-gc
-#
-# Garbage collect old generations, keeping the most recent N
-# plus the currently booted one.
 
 [[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
 
@@ -12,14 +9,17 @@ source /usr/local/lib/atomic/common.sh
 
 show_help() {
     cat << EOF
-atomic-gc - Garbage collect old generations
+atomic-gc - Manage generations
 
-Usage: atomic-gc [OPTIONS] [COUNT]
+Usage:
+    atomic-gc [OPTIONS] [COUNT]    Garbage collect (keep COUNT, default: $KEEP_GENERATIONS)
+    atomic-gc list                 List all generations
+    atomic-gc rm GEN_ID [...]      Delete specific generation(s)
 
 Options:
-    -n, --dry-run    Show what would be deleted
+    -n, --dry-run    Show what would be done
+    -y, --yes        Skip confirmation (for rm)
     -h, --help       Show this help
-    COUNT            Number of generations to keep (default: $KEEP_GENERATIONS)
 
 EOF
     exit 0
@@ -29,31 +29,26 @@ case "${1:-}" in
     -h|--help) show_help ;;
 esac
 
-DRY_RUN=0
-KEEP_COUNT="$KEEP_GENERATIONS"
+validate_config || exit 1
 
+DRY_RUN=0
+YES=0
+COMMAND="gc"
+
+case "${1:-}" in
+    list) COMMAND="list"; shift ;;
+    rm)   COMMAND="rm"; shift ;;
+esac
+
+ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -n|--dry-run) DRY_RUN=1; shift ;;
-        [0-9]*)
-            if [[ "$1" =~ ^[0-9]+$ ]]; then
-                KEEP_COUNT="$1"
-            else
-                echo "ERROR: Invalid number: $1" >&2
-                exit 1
-            fi
-            shift
-            ;;
-        *) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+        -y|--yes) YES=1; shift ;;
+        -*) echo "ERROR: Unknown option: $1" >&2; exit 1 ;;
+        *) ARGS+=("$1"); shift ;;
     esac
 done
-
-validate_config || exit 1
-
-if ! [[ "$KEEP_COUNT" =~ ^[0-9]+$ ]] || [[ "$KEEP_COUNT" -lt 1 ]]; then
-    echo "ERROR: Invalid generation count: $KEEP_COUNT" >&2
-    exit 1
-fi
 
 acquire_lock
 
@@ -64,4 +59,46 @@ cleanup_gc() {
 }
 trap cleanup_gc EXIT
 
-garbage_collect "$KEEP_COUNT" "$DRY_RUN"
+case "$COMMAND" in
+    list)
+        current_subvol=$(get_current_subvol)
+        ensure_btrfs_mounted || exit 1
+        generations=$(list_generations)
+        [[ -z "$generations" ]] && { echo "No generations found"; exit 0; }
+        for gen_id in $generations; do
+            if [[ "root-${gen_id}" == "$current_subvol" ]]; then
+                echo "  * ${gen_id}  (current)"
+            else
+                echo "    ${gen_id}"
+            fi
+        done
+        ;;
+    rm)
+        [[ ${#ARGS[@]} -eq 0 ]] && { echo "ERROR: Specify generation(s) to delete" >&2; exit 1; }
+        ensure_btrfs_mounted || exit 1
+        # Validate all targets exist before deleting any
+        for gen_id in "${ARGS[@]}"; do
+            if [[ ! -f "${ESP}/EFI/Linux/arch-${gen_id}.efi" ]] && \
+               [[ ! -d "${BTRFS_MOUNT}/root-${gen_id}" ]]; then
+                echo "ERROR: Generation not found: ${gen_id}" >&2
+                exit 1
+            fi
+        done
+        if [[ "$YES" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+            echo "Will delete: ${ARGS[*]}"
+            read -rp "Continue? [y/N] " answer
+            [[ "$answer" =~ ^[Yy] ]] || { echo "Aborted"; exit 0; }
+        fi
+        for gen_id in "${ARGS[@]}"; do
+            delete_generation "$gen_id" "$DRY_RUN"
+        done
+        ;;
+    gc)
+        KEEP_COUNT="${ARGS[0]:-$KEEP_GENERATIONS}"
+        if ! [[ "$KEEP_COUNT" =~ ^[0-9]+$ ]] || [[ "$KEEP_COUNT" -lt 1 ]]; then
+            echo "ERROR: Invalid count: $KEEP_COUNT" >&2
+            exit 1
+        fi
+        garbage_collect "$KEEP_COUNT" "$DRY_RUN"
+        ;;
+esac

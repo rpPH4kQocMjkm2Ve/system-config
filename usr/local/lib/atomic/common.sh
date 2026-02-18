@@ -317,21 +317,8 @@ garbage_collect() {
     local -a to_delete=()
     local count=0
 
-    for gen_id in $generations; do
-        local subvol_name="root-${gen_id}"
-
-        # Never delete the currently booted subvolume
-        if [[ "$subvol_name" == "$current_subvol" ]]; then
-            to_keep+=("$gen_id (current)")
-            continue
-        fi
-
-        count=$((count + 1))
-        if [[ $count -le $keep ]]; then
-            to_keep+=("$gen_id")
-        else
-            to_delete+=("$gen_id")
-        fi
+    for gen_id in "${to_delete[@]}"; do
+        delete_generation "$gen_id" "$dry_run"
     done
 
     if [[ ${#to_keep[@]} -gt 0 ]]; then
@@ -373,3 +360,34 @@ garbage_collect() {
 
     echo ":: Garbage collection done"
 }
+
+delete_generation() {
+    local gen_id="$1"
+    local dry_run="${2:-0}"
+    local current_subvol
+    current_subvol=$(get_current_subvol)
+
+    [[ -z "$current_subvol" ]] && {
+        echo "ERROR: Cannot determine current subvolume, refusing to delete" >&2
+        return 1
+    }
+
+    if [[ "root-${gen_id}" == "$current_subvol" ]]; then
+        echo "   REFUSE: ${gen_id} is current" >&2
+        return 1
+    fi
+
+    if [[ "$dry_run" -eq 1 ]]; then
+        echo "   Would delete: ${gen_id}"
+        return 0
+    fi
+
+    echo "   Deleting: ${gen_id}"
+    rm -f "${ESP}/EFI/Linux/arch-${gen_id}.efi"
+    if [[ -d "${BTRFS_MOUNT}/root-${gen_id}" ]]; then
+        btrfs subvolume delete "${BTRFS_MOUNT}/root-${gen_id}" 2>/dev/null || {
+            echo "   WARN: Failed to delete subvolume root-${gen_id}" >&2
+        }
+    fi
+}
+
