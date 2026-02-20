@@ -1,27 +1,20 @@
 #!/bin/bash
 # /usr/local/bin/atomic-guard
 #
-# Pacman hook guard: blocks direct system upgrades (pacman -Syu).
-# Allows:
-#   - Package installs without --sysupgrade (pacman -S, -R, etc.)
-#   - Upgrades via atomic-upgrade (env var + lock verification)
-#   - Upgrades via AUR helpers (yay, paru, etc.)
+# Pacman hook guard: blocks direct system upgrades.
+# Allows upgrades only when called from atomic-upgrade (via env + lock)
+# or from AUR helpers (yay, paru, etc.) which invoke pacman themselves.
 
 if [[ -r /usr/local/lib/atomic/common.sh ]]; then
     source /usr/local/lib/atomic/common.sh 2>/dev/null || true
 fi
 LOCK_FILE="${LOCK_FILE:-/var/lock/atomic-upgrade.lock}"
 
-# ── Atomic-upgrade context ───────────────────────────────────────
-# If called during atomic-upgrade: verify lock when accessible.
-# Inside chroot /run is a fresh tmpfs — lock file won't exist,
-# so we trust the env var (only root can set it anyway).
+# If called during atomic-upgrade: verify lock is actually held
 if [[ "${ATOMIC_UPGRADE:-}" == "1" ]]; then
-    if [[ -f "$LOCK_FILE" ]]; then
-        # Lock file exists — verify it's actually held.
-        # If we CAN acquire it, nobody holds it → spoofed env var.
-        flock -n "$LOCK_FILE" -c true 2>/dev/null && exit 1
-    fi
+    [[ -f "$LOCK_FILE" ]] || exit 1
+    # If we CAN acquire the lock, nobody holds it — that's wrong
+    flock -n "$LOCK_FILE" -c true 2>/dev/null && exit 1
     exit 0
 fi
 
@@ -57,21 +50,9 @@ if ! is_sysupgrade; then
     exit 0
 fi
 
-# ── AUR helper detection ────────────────────────────────────────
-is_child_of_aur_helper() {
-    local pid=$$
-    while [[ $pid -ne 1 ]]; do
-        local comm
-        comm=$(cat "/proc/$pid/comm" 2>/dev/null) || break
-        case "$comm" in
-            yay|paru|pikaur|aura) return 0 ;;
-        esac
-        pid=$(awk '{print $4}' "/proc/$pid/stat" 2>/dev/null) || break
-    done
-    return 1
-}
+# Allow AUR helpers — walk up the process tree via /proc
 
-if is_child_of_aur_helper; then
+if type -t is_child_of_aur_helper &>/dev/null && is_child_of_aur_helper; then
     exit 0
 fi
 

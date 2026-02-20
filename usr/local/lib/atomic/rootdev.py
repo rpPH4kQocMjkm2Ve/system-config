@@ -171,7 +171,7 @@ def build_cmdline(info: dict, new_subvol: str) -> str:
 def main() -> int:
     if len(sys.argv) < 2:
         print(
-            f"Usage: {sys.argv[0]} detect|cmdline [SUBVOL]",
+            f"Usage: {sys.argv[0]} detect|cmdline|device [SUBVOL]",
             file=sys.stderr,
         )
         return 1
@@ -196,6 +196,14 @@ def main() -> int:
             print("ERROR: Failed to detect root device", file=sys.stderr)
             return 1
         print(build_cmdline(info, sys.argv[2]))
+        return 0
+
+    elif command == "device":
+        info = detect_root()
+        if not info:
+            print("ERROR: Failed to detect root device", file=sys.stderr)
+            return 1
+        print(info["source"])
         return 0
 
     else:

@@ -13,7 +13,6 @@ KEEP_GENERATIONS=3
 MAPPER_NAME="root_crypt"
 KERNEL_PKG="linux"
 LOCK_FILE="/var/lock/atomic-upgrade.lock"
-LOG_FILE="/var/log/atomic-upgrade.log"
 # Kernel security parameters
 KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
 
@@ -73,24 +72,11 @@ load_config
 
 validate_config() {
     [[ -d "$ESP" ]] || { echo "ERROR: ESP not found: $ESP" >&2; return 1; }
-    [[ -e "/dev/mapper/${MAPPER_NAME}" ]] || { echo "ERROR: Mapper not found: $MAPPER_NAME" >&2; return 1; }
+    get_root_device >/dev/null || return 1
     [[ "$KEEP_GENERATIONS" =~ ^[0-9]+$ ]] || { echo "ERROR: Invalid KEEP_GENERATIONS" >&2; return 1; }
     [[ "$KEEP_GENERATIONS" -ge 1 ]] || { echo "ERROR: KEEP_GENERATIONS must be >= 1" >&2; return 1; }
     return 0
 }
-
-# ── Logging ─────────────────────────────────────────────────────────
-
-log() {
-    local level="${1:-INFO}"
-    shift
-    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] [${level}] $*"
-    echo "$msg" | tee -a "$LOG_FILE"
-}
-
-log_info()  { log "INFO" "$@"; }
-log_error() { log "ERROR" "$@" >&2; }
-log_warn()  { log "WARN" "$@"; }
 
 # ── Dependency check ────────────────────────────────────────────────
 
@@ -127,6 +113,21 @@ acquire_lock() {
     export LOCK_FD
 }
 
+# ── AUR helper detection ────────────────────────────────────────
+
+is_child_of_aur_helper() {
+    local pid=$$
+    while [[ $pid -ne 1 ]]; do
+        local comm
+        comm=$(cat "/proc/$pid/comm" 2>/dev/null) || break
+        case "$comm" in
+            yay|paru|pikaur|aura) return 0 ;;
+        esac
+        pid=$(awk '{print $4}' "/proc/$pid/stat" 2>/dev/null) || break
+    done
+    return 1
+}
+
 # ── fstab update (delegates to Python for safety) ──────────────────
 
 update_fstab() {
@@ -145,7 +146,37 @@ get_current_subvol() {
 # get_current_subvol_raw: returns subvolume as reported by findmnt
 # Uses sed instead of grep -P for portability
 get_current_subvol_raw() {
-    findmnt -n -o OPTIONS / | sed -n 's/.*subvol=\([^,]*\).*/\1/p'
+    findmnt -n -o OPTIONS / | sed -n 's/.*subvol=\([^,]*\).*/\1/p' | head -1
+}
+
+# ── Root block device ────────────────────────────────────────────
+
+_ROOT_DEVICE=""
+
+get_root_device() {
+    # Cache: python3 startup ~30ms, may be called multiple times
+    if [[ -n "$_ROOT_DEVICE" ]]; then
+        echo "$_ROOT_DEVICE"
+        return 0
+    fi
+
+    local dev
+    dev=$(python3 /usr/local/lib/atomic/rootdev.py device 2>/dev/null)
+    if [[ -n "$dev" && -e "$dev" ]]; then
+        _ROOT_DEVICE="$dev"
+        echo "$dev"
+        return 0
+    fi
+
+    # Fallback to configured mapper name
+    if [[ -e "/dev/mapper/${MAPPER_NAME}" ]]; then
+        _ROOT_DEVICE="/dev/mapper/${MAPPER_NAME}"
+        echo "$_ROOT_DEVICE"
+        return 0
+    fi
+
+    echo "ERROR: Cannot detect root block device" >&2
+    return 1
 }
 
 # ── Btrfs mount helpers ────────────────────────────────────────────
@@ -153,7 +184,9 @@ get_current_subvol_raw() {
 ensure_btrfs_mounted() {
     mkdir -p "$BTRFS_MOUNT" || return 1
     if ! mountpoint -q "$BTRFS_MOUNT" 2>/dev/null; then
-        mount -o subvolid=5 "/dev/mapper/${MAPPER_NAME}" "$BTRFS_MOUNT" || {
+        local root_dev
+        root_dev=$(get_root_device) || return 1
+        mount -o subvolid=5 "$root_dev" "$BTRFS_MOUNT" || {
             echo "ERROR: Failed to mount Btrfs root" >&2
             return 1
         }

@@ -181,7 +181,9 @@ btrfs subvolume snapshot "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" \
 SNAPSHOT_CREATED=1
 
 echo ":: Mounting new root..."
-mount -o subvol="/${NEW_SUBVOL}" "/dev/mapper/${MAPPER_NAME}" "$NEW_ROOT" || {
+ROOT_DEVICE=$(get_root_device) || { echo "ERROR: Cannot detect root device" >&2; exit 1; }
+
+mount -o subvol="/${NEW_SUBVOL}" "$ROOT_DEVICE" "$NEW_ROOT" || {
     echo "ERROR: Failed to mount new root" >&2
     exit 1
 }

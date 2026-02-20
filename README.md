@@ -113,7 +113,7 @@ Inside chroot, `/run` is a fresh tmpfs so the lock file won't exist — the guar
 | `NEW_ROOT` | `/mnt/newroot` | New snapshot mount point |
 | `ESP` | `/efi` | EFI System Partition |
 | `KEEP_GENERATIONS` | `3` | Generations to keep (excluding current) |
-| `MAPPER_NAME` | `root_crypt` | dm-crypt mapper name |
+| `MAPPER_NAME` | `root_crypt` | dm-crypt mapper name (fallback if auto-detection fails) |
 | `KERNEL_PKG` | `linux` | Kernel package (linux/linux-lts/linux-zen) |
 | `KERNEL_PARAMS` | *(security defaults)* | Kernel command line parameters |
 

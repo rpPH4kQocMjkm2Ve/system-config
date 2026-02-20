@@ -33,21 +33,10 @@ for arg in "$@"; do
 done
 
 if [[ $has_sync -eq 1 && $has_upgrade -eq 1 ]]; then
-    # Skip hint if parent is an AUR helper — walk process tree
-    is_child_of_aur_helper() {
-        local pid=$$
-        while [[ $pid -ne 1 ]]; do
-            local comm
-            comm=$(cat "/proc/$pid/comm" 2>/dev/null) || break
-            case "$comm" in
-                yay|paru|pikaur|aura) return 0 ;;
-            esac
-            pid=$(awk '{print $4}' "/proc/$pid/stat" 2>/dev/null) || break
-        done
-        return 1
-    }
+    # Load shared library only for -Syu path (not every pacman call)
+    source /usr/local/lib/atomic/common.sh 2>/dev/null || true
 
-    if is_child_of_aur_helper; then
+    if type -t is_child_of_aur_helper &>/dev/null && is_child_of_aur_helper; then
         exec /usr/bin/pacman "$@"
     fi
 
