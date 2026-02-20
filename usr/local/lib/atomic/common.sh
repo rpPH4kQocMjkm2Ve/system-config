@@ -294,6 +294,13 @@ build_uki() {
     [[ -f "$kernel" ]] || { echo "ERROR: No kernel: $kernel" >&2; return 1; }
     [[ -f "$initramfs" ]] || { echo "ERROR: No initramfs: $initramfs" >&2; return 1; }
 
+    # Extract kernel version from modules directory inside the snapshot
+    local uname_ver=""
+    local modules_dir="${new_root}/usr/lib/modules"
+    if [[ -d "$modules_dir" ]]; then
+        uname_ver=$(ls -1 "$modules_dir" | grep -E '^[0-9]+\.' | sort -V | tail -1)
+    fi
+
     local root_cmdline
     root_cmdline=$(python3 /usr/local/lib/atomic/rootdev.py cmdline "$new_subvol") || {
         echo "ERROR: Cannot detect root device for cmdline" >&2
@@ -311,12 +318,21 @@ build_uki() {
         return 1
     }
 
-    if ! ukify build \
-        --linux="$kernel" \
-        --initrd="$initramfs" \
-        --cmdline="$cmdline" \
-        --os-release="@${os_release_tmp}" \
-        --output="$uki_path"; then
+    local -a ukify_args=(
+        ukify build
+        --linux="$kernel"
+        --initrd="$initramfs"
+        --cmdline="$cmdline"
+        --os-release="@${os_release_tmp}"
+        --output="$uki_path"
+    )
+
+    # Pass explicit kernel version to suppress autodetection warning
+    if [[ -n "$uname_ver" ]]; then
+        ukify_args+=(--uname="$uname_ver")
+    fi
+
+    if ! "${ukify_args[@]}"; then
         echo "ERROR: ukify build failed" >&2
         return 1
     fi
