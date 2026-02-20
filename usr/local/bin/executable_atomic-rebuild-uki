@@ -1,0 +1,125 @@
+#!/bin/bash
+# /usr/local/bin/atomic-rebuild-uki
+#
+# Rebuild a signed UKI for an existing generation subvolume.
+# Use case: accidentally deleted .efi file, orphaned snapshot.
+
+[[ $EUID -eq 0 ]] || { echo "ERROR: Must run as root" >&2; exit 1; }
+
+set -euo pipefail
+
+source /usr/local/lib/atomic/common.sh
+
+show_help() {
+    cat << 'EOF'
+atomic-rebuild-uki - Rebuild UKI for an existing generation
+
+Usage: atomic-rebuild-uki <GEN_ID>
+       atomic-rebuild-uki --list
+
+Examples:
+    atomic-rebuild-uki 20250208-134725
+    atomic-rebuild-uki --list
+
+GEN_ID is the timestamp part (e.g. 20250208-134725).
+The subvolume root-<GEN_ID> must exist.
+EOF
+    exit 0
+}
+
+list_orphans() {
+    ensure_btrfs_mounted || exit 1
+
+    echo "Subvolumes → UKI status:"
+    echo ""
+
+    local found=0
+    for dir in "${BTRFS_MOUNT}"/root-[0-9]*; do
+        [[ -d "$dir" ]] || continue
+        local name="${dir##*/}"
+        local gen_id="${name#root-}"
+        local uki="${ESP}/EFI/Linux/arch-${gen_id}.efi"
+        if [[ -f "$uki" ]]; then
+            echo "  ${gen_id}  ✓ UKI exists"
+        else
+            echo "  ${gen_id}  ✗ UKI missing"
+        fi
+        found=1
+    done
+
+    if [[ $found -eq 0 ]]; then
+        echo "  No generation subvolumes found"
+    fi
+}
+
+case "${1:-}" in
+    -h|--help) show_help ;;
+    --list|-l)
+        validate_config || exit 1
+        list_orphans
+        exit 0
+        ;;
+esac
+
+GEN_ID="${1:?Usage: atomic-rebuild-uki <GEN_ID>}"
+
+# Validate gen_id format
+if ! [[ "$GEN_ID" =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+    echo "ERROR: Invalid GEN_ID format: $GEN_ID (expected YYYYMMDD-HHMMSS)" >&2
+    exit 1
+fi
+
+SUBVOL="root-${GEN_ID}"
+UKI_PATH="${ESP}/EFI/Linux/arch-${GEN_ID}.efi"
+
+validate_config || exit 1
+
+if [[ -f "$UKI_PATH" ]]; then
+    echo "UKI already exists: $UKI_PATH"
+    read -rp "Overwrite? [y/N] " answer
+    case "$answer" in
+        [Yy]*) ;;
+        *) echo "Aborted."; exit 1 ;;
+    esac
+fi
+
+acquire_lock
+
+cleanup_rebuild() {
+    set +e
+    [[ -n "${MOUNT_DIR:-}" ]] && mountpoint -q "$MOUNT_DIR" 2>/dev/null && umount "$MOUNT_DIR"
+    mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"
+    [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&-
+}
+trap cleanup_rebuild EXIT
+
+ensure_btrfs_mounted
+
+echo ":: Checking subvolume..."
+validate_subvolume "$SUBVOL" || {
+    echo "ERROR: Subvolume not found: $SUBVOL" >&2
+    echo "Run: atomic-rebuild-uki --list" >&2
+    exit 1
+}
+
+MOUNT_DIR=$(mktemp -d /tmp/atomic-rebuild.XXXXXX)
+ROOT_DEVICE=$(get_root_device) || { echo "ERROR: Cannot detect root device" >&2; exit 1; }
+
+echo ":: Mounting ${SUBVOL}..."
+mount -o subvol="/${SUBVOL}",ro "$ROOT_DEVICE" "$MOUNT_DIR" || {
+    echo "ERROR: Failed to mount subvolume" >&2
+    exit 1
+}
+
+echo ":: Building UKI..."
+UKI_RESULT=$(build_uki "$GEN_ID" "$MOUNT_DIR" "$SUBVOL") || exit 1
+
+echo ":: Signing UKI for Secure Boot..."
+sbctl sign "$UKI_RESULT" || { echo "ERROR: Signing failed" >&2; exit 1; }
+
+echo ":: Unmounting..."
+umount "$MOUNT_DIR"
+rmdir "$MOUNT_DIR"
+MOUNT_DIR=""
+
+echo "Done: ${UKI_RESULT}"

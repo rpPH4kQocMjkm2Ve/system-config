@@ -88,6 +88,8 @@ sudo atomic-gc --dry-run 2                             # preview: keep last 2
 sudo atomic-gc list                                    # list all generations
 sudo atomic-gc rm 20260217-143022                      # delete specific generation
 sudo atomic-gc rm -n 20260217-pre-nv                   # dry-run delete
+sudo atomic-rebuild-uki --list                         # show subvolumes and UKI status
+sudo atomic-rebuild-uki 20250208-134725                # rebuild UKI for specific generation
 ```
 
 ### Guard layers
@@ -124,6 +126,7 @@ Inside chroot, `/run` is a fresh tmpfs so the lock file won't exist — the guar
 | `atomic-upgrade` | Main upgrade script — snapshot, chroot, UKI, sign |
 | `atomic-gc` | Generation management — garbage collection, list, manual delete, orphan cleanup |
 | `atomic-guard` | Pacman hook — blocks direct `-Syu`, allows installs/removes |
+| `atomic-rebuild-uki` | Rebuild UKI for existing snapshot |
 | `pacman` (wrapper) | Suggests `atomic-upgrade` on `-Syu`, bypassed in chroot |
 | `common.sh` | Shared library (config, locking, btrfs, UKI build, GC) |
 | `fstab.py` | Safe fstab editing (atomic write + verification + rollback) |
