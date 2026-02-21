@@ -3,11 +3,9 @@
 System-level configuration files (`/etc`, `/efi`, `/usr/local`) managed with
 [chezmoi](https://www.chezmoi.io/) using `destDir = "/"`.
 
-Includes an atomic upgrade system for Arch Linux on Btrfs + UKI + Secure Boot.
-
 ## What's included
 
-- **Atomic upgrades**: NixOS/Silverblue-style generational updates on plain Arch
+- **Atomic upgrades**: via [atomic-upgrade](https://gitlab.com/fkzys/atomic-upgrade) (per-host config override)
 - **Boot**: systemd-boot with signed UKI (Secure Boot via sbctl)
 - **Filesystem**: Btrfs on LUKS, automated snapshots via btrbk
 - **Network**: systemd-networkd (wired + wifi)
@@ -51,92 +49,11 @@ GTK4 applications work via the `libfake_rlimit.so` shim.
 - `/etc/ld.so.preload` — `libfake_rlimit.so` + `libhardened_malloc-light.so` (managed by build script)
 - `/etc/sysctl.d/20-hardened-malloc.conf` — `vm.max_map_count = 1048576` for guard slabs
 
-## Atomic upgrade system
+## Atomic upgrade overrides
 
-Generational updates: snapshot → chroot upgrade → UKI build → sign → reboot.
+The [atomic-upgrade](https://gitlab.com/fkzys/atomic-upgrade) package is installed separately. This repo provides:
 
-```
-pacman -Syu  →  blocked by guard/wrapper
-                ↓
-         sudo atomic-upgrade
-                ↓
-    1. Btrfs snapshot of current root
-    2. Mount snapshot, arch-chroot into it
-    3. Run command (default: pacman -Syu)
-    4. Update fstab (subvol=)
-    5. Build UKI (ukify)
-    6. Sign with sbctl (Secure Boot)
-    7. Garbage collect old generations
-                ↓
-         reboot → new generation active
-```
-
-Rollback: select a previous UKI entry in systemd-boot at boot time.
-
-### Usage
-
-```bash
-sudo atomic-upgrade                                    # full system upgrade
-sudo atomic-upgrade --dry-run                          # preview without changes
-sudo atomic-upgrade -t pre-nvidia                      # upgrade with custom tag
-sudo atomic-upgrade --no-gc                            # upgrade without garbage collection
-sudo atomic-upgrade -- pacman -S nvidia-dkms           # install specific package
-sudo atomic-upgrade -t nvidia -- pacman -S nvidia-dkms # custom command with tag
-sudo atomic-upgrade --no-gc -t cleanup -- pacman -Rns firefox
-sudo atomic-gc                                         # clean old generations (keep last 3 + current)
-sudo atomic-gc --dry-run 2                             # preview: keep last 2
-sudo atomic-gc list                                    # list all generations
-sudo atomic-gc rm 20260217-143022                      # delete specific generation
-sudo atomic-gc rm -n 20260217-pre-nv                   # dry-run delete
-sudo atomic-rebuild-uki --list                         # show subvolumes and UKI status
-sudo atomic-rebuild-uki 20250208-134725                # rebuild UKI for specific generation
-```
-
-### Guard layers
-
-The system has two layers preventing accidental direct upgrades:
-
-**`pacman` wrapper** (`/usr/local/bin/pacman`) — intercepts `pacman -Syu` and suggests `atomic-upgrade`. Detects AUR helpers to avoid double prompts. Bypassed entirely when `ATOMIC_UPGRADE=1` (inside chroot).
-
-**`atomic-guard`** (pacman hook) — blocks `pacman -Syu` at the hook level. Allows:
-- Package installs without `--sysupgrade` (`pacman -S`, `-R`, etc.)
-- Upgrades via `atomic-upgrade` (env var + lock verification)
-- Upgrades via AUR helpers (`yay`, `paru`, etc.)
-
-Inside chroot, `/run` is a fresh tmpfs so the lock file won't exist — the guard trusts the env var (only root can set it).
-
-### Configuration
-
-`/etc/atomic.conf`:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `BTRFS_MOUNT` | `/mnt/temp_root` | Btrfs top-level mount point |
-| `NEW_ROOT` | `/mnt/newroot` | New snapshot mount point |
-| `ESP` | `/efi` | EFI System Partition |
-| `KEEP_GENERATIONS` | `3` | Generations to keep (excluding current) |
-| `MAPPER_NAME` | `root_crypt` | dm-crypt mapper name (fallback if auto-detection fails) |
-| `KERNEL_PKG` | `linux` | Kernel package (linux/linux-lts/linux-zen) |
-| `KERNEL_PARAMS` | *(security defaults)* | Kernel command line parameters |
-
-### Components
-
-| File | Role |
-|------|------|
-| `atomic-upgrade` | Main upgrade script — snapshot, chroot, UKI, sign |
-| `atomic-gc` | Generation management — garbage collection, list, manual delete, orphan cleanup |
-| `atomic-guard` | Pacman hook — blocks direct `-Syu`, allows installs/removes |
-| `atomic-rebuild-uki` | Rebuild UKI for existing snapshot |
-| `pacman` (wrapper) | Suggests `atomic-upgrade` on `-Syu`, bypassed in chroot |
-| `common.sh` | Shared library (config, locking, btrfs, UKI build, GC) |
-| `fstab.py` | Safe fstab editing (atomic write + verification + rollback) |
-| `rootdev.py` | Auto-detect root device type (LUKS/LVM/plain) |
-
-### Garbage collection
-
-`atomic-gc` and the GC phase of `atomic-upgrade` keep the last N generations (default 3) plus the currently booted one. Generations are sorted newest-first; the current subvolume is always preserved regardless of count.
-
-After deleting old generations, an orphan sweep finds any `root-*` subvolumes on the Btrfs top-level that have no matching UKI (`arch-*.efi`) on the ESP and removes them. This catches leftover subvolumes from interrupted upgrades or manual deletions of UKI files.
+- **`/etc/atomic.conf`** — per-host kernel parameters (TPM2 auto-unlock, etc.) via chezmoi template
 
 ## Firewall
 
@@ -167,7 +84,7 @@ Subnet values are stored encrypted in `secrets.enc.yaml` (`firewall.subnet1`, `f
 .
 ├── efi/loader/              # systemd-boot config
 ├── etc/
-│   ├── atomic.conf.tmpl     # atomic-upgrade config (per-host kernel params)
+│   ├── atomic.conf.tmpl     # atomic-upgrade config override (per-host kernel params)
 │   ├── btrbk/               # Btrfs snapshot policy
 │   ├── containers/          # Podman (btrfs driver, per-host graphroot)
 │   ├── firewalld/
@@ -176,7 +93,6 @@ Subnet values are stored encrypted in `secrets.enc.yaml` (`firewall.subnet1`, `f
 │   │       └── trusted.xml.tmpl  # Trusted zone (VPN, subnets)
 │   ├── mkinitcpio.*         # Initramfs (per-host nvidia modules)
 │   ├── modprobe.d/          # Kernel modules (nvidia)
-│   ├── pacman.d/hooks/      # Pacman hooks
 │   ├── pam.d/               # PAM (gnome-keyring auto-unlock)
 │   ├── polkit-1/            # Polkit rules (sing-box DNS)
 │   ├── security/            # faillock
@@ -187,9 +103,7 @@ Subnet values are stored encrypted in `secrets.enc.yaml` (`firewall.subnet1`, `f
 │   └── dot_zshrc            # Root shell config
 ├── run_onchange_build_hardened_malloc.sh
 └── usr/local/
-    ├── bin/                 # atomic-upgrade tooling + pacman wrapper
     └── lib/
-        ├── atomic/                     # Shared library + Python helpers
         ├── libfake_rlimit.so           # (built, gitignored) glycin RLIMIT_AS shim
         ├── libhardened_malloc.so       # (built, gitignored)
         └── libhardened_malloc-light.so # (built, gitignored)
@@ -259,6 +173,9 @@ sudo chezmoi apply  # second run to deploy built libraries
 ## Post-install
 
 ```bash
+# Install atomic-upgrade
+yay -S atomic-upgrade
+
 # Enable zram
 sudo systemctl start systemd-zram-setup@zram0.service
 
@@ -271,10 +188,7 @@ sudo systemctl enable --now btrbk.timer
 
 ### Required
 
-- `btrfs-progs` — Btrfs operations
-- `systemd-ukify` — UKI build
-- `sbctl` — Secure Boot signing
-- `python` ≥ 3.10 — fstab.py, rootdev.py
+- `atomic-upgrade` — atomic system upgrades ([AUR](https://gitlab.com/fkzys/atomic-upgrade))
 - `chezmoi` — configuration management
 - `sops` + `age` — secret encryption
 - `base-devel` + `gcc` — building hardened_malloc and libfake_rlimit
