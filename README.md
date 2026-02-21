@@ -11,17 +11,19 @@ System-level configuration files (`/etc`, `/efi`, `/usr/local`) managed with
 - **Network**: systemd-networkd (wired + wifi)
 - **Firewall**: firewalld with per-user network blocking and trusted zone templating
 - **Containers**: Podman with btrfs storage driver
-- **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam, hardened_malloc
+- **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam, hardened\_malloc
+- **Nextcloud blocking**: pacman hook prevents Nextcloud installation
+  for user\_c (controlled by `block_nextcloud_user_c` flag)
 
-## hardened_malloc
+## hardened\_malloc
 
-[hardened_malloc](https://github.com/GrapheneOS/hardened_malloc) is built from source via `run_onchange_build_hardened_malloc.sh` and deployed to `/usr/local/lib/`.
+[hardened\_malloc](https://github.com/GrapheneOS/hardened_malloc) is built from source via `run_onchange_build_hardened_malloc.sh` and deployed to `/usr/local/lib/`.
 
 Both variants are built:
 - **default** (`libhardened_malloc.so`) — full hardening, used per-app via bwrap `LD_PRELOAD`
 - **light** (`libhardened_malloc-light.so`) — balanced, loaded system-wide via `/etc/ld.so.preload`
 
-A `libfake_rlimit.so` shim is also built and preloaded before hardened_malloc. It intercepts `prlimit64(RLIMIT_AS)` calls from GTK4's glycin image loaders, which set a 16 GB virtual memory limit incompatible with hardened_malloc's ~240 GB guard region reservation.
+A `libfake_rlimit.so` shim is also built and preloaded before hardened\_malloc. It intercepts `prlimit64(RLIMIT_AS)` calls from GTK4's glycin image loaders, which set a 16 GB virtual memory limit incompatible with hardened\_malloc's ~240 GB guard region reservation.
 
 `/etc/ld.so.preload` is managed by the build script (not as a chezmoi file) to ensure libraries exist before the preload file references them.
 
@@ -40,7 +42,7 @@ sudo chezmoi apply  # deploys .so files to /usr/local/lib/
 
 ### Compatibility
 
-Applications with custom allocators (Chromium/PartitionAlloc, Firefox/mozjemalloc) are incompatible and must have hardened_malloc disabled in their bwrap wrappers. See [user dotfiles](https://gitlab.com/fkzys/dotfiles) for details.
+Applications with custom allocators (Chromium/PartitionAlloc, Firefox/mozjemalloc) are incompatible and must have hardened\_malloc disabled in their bwrap wrappers. See [user dotfiles](https://gitlab.com/fkzys/dotfiles) for details.
 
 GTK4 applications work via the `libfake_rlimit.so` shim.
 
@@ -88,10 +90,15 @@ Subnet values are stored encrypted in `secrets.enc.yaml` (`firewall.subnet1`, `f
 │   ├── btrbk/               # Btrfs snapshot policy
 │   ├── containers/          # Podman (btrfs driver, per-host graphroot)
 │   ├── firewalld/
-│   │   ├── direct.xml.tmpl       # Per-user outbound block (iptables owner match)
+│   │   ├── direct.xml.tmpl        # Per-user outbound block (iptables owner match)
 │   │   └── zones/
-│   │       └── trusted.xml.tmpl  # Trusted zone (VPN, subnets)
-│   ├── mkinitcpio.*         # Initramfs (per-host nvidia modules)
+│   │       └── trusted.xml.tmpl   # Trusted zone (VPN, subnets)
+│   ├── mkinitcpio.conf            # Initramfs base config
+│   ├── mkinitcpio.conf.d/         # Drop-in (per-host nvidia modules)
+│   ├── mkinitcpio.d/              # Preset (linux.preset)
+│   ├── modules-load.d/            # Kernel modules to load at boot
+│   ├── pacman.d/
+│   │   └── hooks/                 # Pacman hooks (Nextcloud blocking)
 │   ├── modprobe.d/          # Kernel modules (nvidia)
 │   ├── pam.d/               # PAM (gnome-keyring auto-unlock)
 │   ├── polkit-1/            # Polkit rules (sing-box DNS)
@@ -118,8 +125,8 @@ Feature flags are set via `chezmoi init` prompts and stored in `/root/.config/ch
 | `nvidia` | NVIDIA GPU (mkinitcpio modules, modprobe config) |
 | `tpm2_unlock` | TPM2 LUKS auto-unlock (`rd.luks.options=tpm2-device=auto`) |
 | `laptop` | Battery charge thresholds (tmpfiles) |
-| `block_nextcloud_user_c` | Block Nextcloud access for user_c |
-| `block_network_user_c` | Block all network access for user_c (firewalld direct rules) |
+| `block_nextcloud_user_c` | Block Nextcloud access for user\_c |
+| `block_network_user_c` | Block all network access for user\_c (firewalld direct rules) |
 
 Per-host data (btrbk targets, podman graphroot, firewall subnets, user UIDs) is stored in `secrets.enc.yaml`, keyed by hostname or category.
 
@@ -191,7 +198,7 @@ sudo systemctl enable --now btrbk.timer
 - `atomic-upgrade` — atomic system upgrades ([AUR](https://gitlab.com/fkzys/atomic-upgrade))
 - `chezmoi` — configuration management
 - `sops` + `age` — secret encryption
-- `base-devel` + `gcc` — building hardened_malloc and libfake_rlimit
+- `base-devel` + `gcc` — building hardened\_malloc and libfake\_rlimit
 
 ### Optional
 
