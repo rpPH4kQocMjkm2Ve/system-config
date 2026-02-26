@@ -195,7 +195,7 @@ sudo systemctl enable --now btrbk.timer
 
 ### Required
 
-- `atomic-upgrade` — atomic system upgrades ([gitlab](https://gitlab.com/fkzys/atomic-upgrade)|[AUR](https://aur.archlinux.org/packages/atomic-upgrade))
+- `atomic-upgrade` — atomic system upgrades ([GitLab](https://gitlab.com/fkzys/atomic-upgrade)|[AUR](https://aur.archlinux.org/packages/atomic-upgrade))
 - `chezmoi` — configuration management
 - `sops` + `age` — secret encryption
 - `base-devel` + `gcc` — building hardened\_malloc and libfake\_rlimit
