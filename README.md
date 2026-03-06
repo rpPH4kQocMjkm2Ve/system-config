@@ -1,6 +1,6 @@
 # root-chezmoi — Arch Linux system configuration
 
-System-level configuration files (`/etc`, `/efi`, `/usr/local`) managed with
+System-level configuration files (`/etc`, `/efi`) managed with
 [chezmoi](https://www.chezmoi.io/) using `destDir = "/"`.
 
 ## What's included
@@ -11,45 +11,19 @@ System-level configuration files (`/etc`, `/efi`, `/usr/local`) managed with
 - **Network**: systemd-networkd (wired + wifi)
 - **Firewall**: firewalld with per-user network blocking and trusted zone templating
 - **Containers**: Podman with btrfs storage driver
-- **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam, hardened\_malloc
+- **Hardening**: kernel sysctl, faillock, coredump off, USB lock, pam, [hardened\_malloc](https://gitlab.com/fkzys/hardened-malloc)
 - **Nextcloud blocking**: pacman hook prevents Nextcloud installation
   for user\_c (controlled by `block_nextcloud_user_c` flag)
 
 ## hardened\_malloc
 
-[hardened\_malloc](https://github.com/GrapheneOS/hardened_malloc) is built from source via `run_onchange_build_hardened_malloc.sh` and deployed to `/usr/local/lib/`.
-
-Both variants are built:
-- **default** (`libhardened_malloc.so`) — full hardening, used per-app via bwrap `LD_PRELOAD`
-- **light** (`libhardened_malloc-light.so`) — balanced, loaded system-wide via `/etc/ld.so.preload`
-
-A `libfake_rlimit.so` shim is also built and preloaded before hardened\_malloc. It intercepts `prlimit64(RLIMIT_AS)` calls from GTK4's glycin image loaders, which set a 16 GB virtual memory limit incompatible with hardened\_malloc's ~240 GB guard region reservation.
-
-`/etc/ld.so.preload` is managed by the build script (not as a chezmoi file) to ensure libraries exist before the preload file references them.
-
-### Updating
+Installed as a separate package via [gitpkg](https://gitlab.com/fkzys/gitpkg):
 
 ```bash
-# 1. Check latest tag
-git ls-remote --tags https://github.com/GrapheneOS/hardened_malloc.git | grep -oP 'refs/tags/\K[0-9]{10}$' | sort -n | tail -5
-
-# 2. Update TAG (and FAKE_RLIMIT_VER if shim changed) in run_onchange_build_hardened_malloc.sh
-
-# 3. Rebuild and deploy
-sudo chezmoi apply  # builds into source dir + writes /etc/ld.so.preload
-sudo chezmoi apply  # deploys .so files to /usr/local/lib/
+gitpkg install hardened_malloc
 ```
 
-### Compatibility
-
-Applications with custom allocators (Chromium/PartitionAlloc, Firefox/mozjemalloc) are incompatible and must have hardened\_malloc disabled in their bwrap wrappers. See [user dotfiles](https://gitlab.com/fkzys/dotfiles) for details.
-
-GTK4 applications work via the `libfake_rlimit.so` shim.
-
-### Configuration
-
-- `/etc/ld.so.preload` — `libfake_rlimit.so` + `libhardened_malloc-light.so` (managed by build script)
-- `/etc/sysctl.d/20-hardened-malloc.conf` — `vm.max_map_count = 1048576` for guard slabs
+See [hardened\_malloc](https://gitlab.com/fkzys/hardened_malloc) for details on variants, fake\_rlimit shim, and compatibility notes.
 
 ## Atomic upgrade overrides
 
@@ -103,17 +77,11 @@ Subnet values are stored encrypted in `secrets.enc.yaml` (`firewall.subnet1`, `f
 │   ├── pam.d/               # PAM (gnome-keyring auto-unlock)
 │   ├── polkit-1/            # Polkit rules (sing-box DNS)
 │   ├── security/            # faillock
-│   ├── sysctl.d/            # Kernel parameters + hardened_malloc vm.max_map_count
+│   ├── sysctl.d/            # Kernel parameters
 │   ├── systemd/             # networkd, journald, coredump, zram
 │   └── tmpfiles.d/          # Battery, USB lock
-├── root/
-│   └── dot_zshrc            # Root shell config
-├── run_onchange_build_hardened_malloc.sh
-└── usr/local/
-    └── lib/
-        ├── libfake_rlimit.so           # (built, gitignored) glycin RLIMIT_AS shim
-        ├── libhardened_malloc.so       # (built, gitignored)
-        └── libhardened_malloc-light.so # (built, gitignored)
+└── root/
+    └── dot_zshrc            # Root shell config
 ```
 
 ## Per-host configuration
@@ -174,12 +142,14 @@ sops updatekeys secrets.enc.yaml
 3. Apply:
 ```bash
 sudo chezmoi init --apply <GIT_URL>
-sudo chezmoi apply  # second run to deploy built libraries
 ```
 
 ## Post-install
 
 ```bash
+# Install hardened_malloc
+gitpkg install hardened_malloc
+
 # Install atomic-upgrade
 yay -S atomic-upgrade
 
@@ -195,13 +165,13 @@ sudo systemctl enable --now btrbk.timer
 
 ### Required
 
-- `atomic-upgrade` — atomic system upgrades ([GitLab](https://gitlab.com/fkzys/atomic-upgrade)|[AUR](https://aur.archlinux.org/packages/atomic-upgrade))
 - `chezmoi` — configuration management
 - `sops` + `age` — secret encryption
-- `base-devel` + `gcc` — building hardened\_malloc and libfake\_rlimit
 
 ### Optional
 
+- [hardened\_malloc](https://gitlab.com/fkzys/hardened_malloc) — hardened memory allocator (via [gitpkg](https://gitlab.com/fkzys/gitpkg))
+- [atomic-upgrade](https://gitlab.com/fkzys/atomic-upgrade) — atomic system upgrades ([GitLab](https://gitlab.com/fkzys/atomic-upgrade) via [gitpkg](https://gitlab.com/fkzys/gitpkg) |[AUR](https://aur.archlinux.org/packages/atomic-upgrade))
 - `btrbk` — automated Btrfs snapshots
 - `podman` — containers (btrfs storage driver)
 - `firewalld` — firewall with per-user blocking and trusted zones
