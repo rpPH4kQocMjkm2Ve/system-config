@@ -116,6 +116,7 @@ alias lt='eza -T --color=always --group-directories-first --level=2'
 alias l.='eza -d .* --color=always --group-directories-first'
 
 alias cat='bat --paging=never'
+alias ccat='bat --paging=never --style=full --color=never --decorations=always'
 alias catp='bat'
 alias rg='rg --smart-case'
 
