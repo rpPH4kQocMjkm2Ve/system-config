@@ -175,3 +175,7 @@ sudo systemctl enable --now btrbk.timer
 - `btrbk` — automated Btrfs snapshots
 - `podman` — containers (btrfs storage driver)
 - `firewalld` — firewall with per-user blocking and trusted zones
+
+## License
+
+AGPL-3.0-or-later
